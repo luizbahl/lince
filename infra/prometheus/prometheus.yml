@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: lince
+    static_configs:
+      - targets:
+          - host.docker.internal:4000   # portal
+          - host.docker.internal:4001   # monitor
+          - host.docker.internal:4002   # ingestor
+          - host.docker.internal:4003   # notifier
