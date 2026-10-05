@@ -1,0 +1,39 @@
+name: ingestor
+
+on:
+  pull_request:
+    paths: &ingestor_paths
+      - "services/ingestor/**"
+      # Shared files the ingestor's build and tests depend on.
+      - "docker-compose.yml"
+      - "infra/elixir/**"
+      - "Makefile"
+      - ".github/workflows/ingestor.yml"
+  push:
+    branches: [main]
+    paths: *ingestor_paths
+
+# A new push to the same PR cancels the run that is still going.
+concurrency:
+  group: ingestor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: format, compile, credo, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same commands as local development: the tests container from docker-compose.yml.
+      - name: Build tests image
+        run: docker compose --profile test build tests
+
+      - name: Run checks
+        run: make ingestor-check
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs clickhouse postgres
