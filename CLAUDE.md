@@ -53,8 +53,8 @@ lib/
 ├── ingestor.ex            # facade: the only public API of the domain
 ├── ingestor/              # domain — business rules, knows nothing about HTTP
 │   ├── companies/         # Ecto schemas live here, not in the web layer
-│   ├── pipeline.ex        # orchestrates the pipeline steps
-│   └── pipeline/          # download.ex, parse.ex, load.ex ...
+│   └── pipeline/          # import_companies.ex (one module per use case) +
+│                          # helper steps: extract.ex, parse.ex, load.ex ...
 ├── ingestor_web.ex
 └── ingestor_web/          # HTTP layer — translates requests to facade calls
     ├── endpoint.ex
@@ -62,6 +62,14 @@ lib/
     └── controllers/       # *_controller.ex + *_json.ex (response format)
 ```
 
+- Pipelines (railway style, the author's preferred pattern), see `Ingestor.Pipeline.ImportCompanies`:
+  - `use Ingestor.Pipeline`; nested `Input` (`embedded_schema` + `changeset/1`) and `Output`
+    (struct);
+  - `call(attrs)` pipes `validate_input_parameters(attrs, Input)` through private steps and ends
+    with `output/1`;
+  - steps return `{:ok, params}` or `{:error, type, detail}` (3-tuple); each step's **first clause
+    passes `{:error, _, _}` along**; invalid input is `{:error, :invalid_input, changeset}`;
+  - no `IO.inspect` left in pipelines.
 - `*_web` modules call **only** the facade (`Ingestor.*`), never pipeline modules or the Repo.
 - Services become Phoenix API-only projects (no HTML/assets) when they need routes; portal is the
   only one with LiveView.

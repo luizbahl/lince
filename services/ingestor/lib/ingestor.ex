@@ -1,18 +1,16 @@
 defmodule Ingestor do
-  @moduledoc """
-  Documentation for `Ingestor`.
-  """
+  @moduledoc false
 
-  @doc """
-  Hello world.
+  alias Ingestor.Pipeline.ImportCompanies
+  alias Ingestor.Pipeline.ImportCompanies.Input
 
-  ## Examples
-
-      iex> Ingestor.hello()
-      :world
-
-  """
-  def hello do
-    :world
+  def import_companies(%{
+        zip_path: zip_path,
+        reference_month: reference_month
+      }) do
+    ImportCompanies.call(%Input{
+      zip_path: zip_path,
+      reference_month: reference_month
+    })
   end
 end
