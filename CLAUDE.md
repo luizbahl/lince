@@ -28,6 +28,42 @@ through **direct HTTP calls** (Req). Each service owns its data.
 
 Observability: PromEx → Prometheus → Grafana.
 
+### Why a monorepo
+
+Decided over one repo per service. Microservices are defined by how services run (own container,
+own database, HTTP-only communication, independent build/deploy), not by repo count. Each service
+must stay independent enough to be extracted with `git subtree split --prefix=services/<name>`:
+
+- own Dockerfile and own container in the compose file;
+- one CI workflow per service, triggered only by changes under `services/<name>/**`;
+- own README documenting the HTTP API it exposes;
+- never import code from another service.
+
+### Inside each service
+
+Phoenix-style split between domain and web layer (example: ingestor):
+
+```
+lib/
+├── ingestor.ex            # facade: the only public API of the domain
+├── ingestor/              # domain — business rules, knows nothing about HTTP
+│   ├── companies/         # Ecto schemas live here, not in the web layer
+│   ├── pipeline.ex        # orchestrates the pipeline steps
+│   └── pipeline/          # download.ex, parse.ex, load.ex ...
+├── ingestor_web.ex
+└── ingestor_web/          # HTTP layer — translates requests to facade calls
+    ├── endpoint.ex
+    ├── router.ex
+    └── controllers/       # *_controller.ex + *_json.ex (response format)
+```
+
+- `*_web` modules call **only** the facade (`Ingestor.*`), never pipeline modules or the Repo.
+- Services become Phoenix API-only projects (no HTML/assets) when they need routes; portal is the
+  only one with LiveView.
+- Other services are reached by compose service name (`http://ingestor:4002`), configured through
+  env vars (e.g. `INGESTOR_URL`) so the same code runs inside and outside Docker.
+- Optional later: the `boundary` library to make the facade rule a compile-time check.
+
 ## Local environment
 
 - Ubuntu, Erlang/OTP 29, Elixir 1.20.4 (installed with mise).
@@ -65,8 +101,8 @@ Receita Federal open CNPJ data: `https://arquivos.receitafederal.gov.br/dados/cn
 
 - [x] Local infra with Docker Compose
 - [x] ingestor project with `Ingestor.ClickhouseRepo` (ecto_ch) and `companies` migration
-- [ ] `tests` container working (`mix test`, format, Credo)
-- [ ] Rewrite README with English as the main language (short Portuguese section at the end, explain what a CNPJ is)
+- [x] `tests` container working (`mix test`, format, Credo)
+- [x] Rewrite README with English as the main language (short Portuguese section at the end, explain what a CNPJ is)
 - [ ] ingestor: stream-parse `Empresas*.zip` (NimbleCSV, ISO-8859-1 → UTF-8) and batch-insert into ClickHouse
 - [ ] ingestor: month-over-month change detection
 - [ ] then monitor, notifier, portal, CI (GitHub Actions), deploy pipeline

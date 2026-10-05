@@ -1,167 +1,246 @@
 # 🐆 Lince
 
-> Monitoramento contínuo de CNPJs: detecta mudanças cadastrais de empresas brasileiras e alerta em tempo real.
+> Continuous monitoring of Brazilian companies: detects registry changes and alerts in real time.
 
-![status](https://img.shields.io/badge/status-em%20desenvolvimento-yellow)
+![status](https://img.shields.io/badge/status-in%20development-yellow)
 ![elixir](https://img.shields.io/badge/Elixir-1.20-4B275F?logo=elixir)
 ![phoenix](https://img.shields.io/badge/Phoenix-LiveView-FD4F00?logo=phoenixframework)
 
-*[English version below](#-english)*
+*[Versão em português no final](#-em-português)*
 
 ---
 
-## O problema
+## What is a CNPJ?
 
-Empresas se relacionam o tempo todo com outras empresas: fornecedores, clientes, parceiros. A situação dessas empresas muda: um CNPJ fica **inapto**, é **baixado**, troca de **razão social**, muda o **quadro societário** ou a **atividade econômica**.
+Every company in Brazil is identified by a **CNPJ** (*Cadastro Nacional da Pessoa Jurídica*), a
+14-digit number issued by the Federal Revenue Service (*Receita Federal*). It works like a company's
+tax ID and registry entry combined: behind each CNPJ there is a legal name, a registration status
+(active, suspended, closed...), a list of partners, an economic activity code, an address and more.
 
-Hoje essa verificação costuma ser manual e pontual: alguém consulta o CNPJ no cadastro e nunca mais olha. Quando o problema aparece (um pagamento para uma empresa baixada, um fornecedor irregular, um cliente com risco de fraude), já é tarde.
+The first 8 digits (the *CNPJ root*) identify the company; the remaining digits identify each of its
+branches.
 
-## A solução
+## The problem
 
-O **Lince** acompanha continuamente uma carteira de CNPJs e avisa assim que algo muda.
+Companies deal with other companies all the time: suppliers, customers, partners. And those
+companies change: a CNPJ becomes **suspended** or **closed**, changes its **legal name**, its
+**partners** or its **economic activity**.
 
-- 📋 **Carteiras de monitoramento:** cada cliente cadastra os CNPJs que quer acompanhar.
-- 🔔 **Alertas em tempo real:** notificação no painel, por e-mail e por webhook quando há mudança.
-- 🕓 **Linha do tempo:** histórico completo de alterações de cada empresa.
-- ⚠️ **Score de risco:** indicador baseado em situação cadastral, idade da empresa, mudanças recentes de sócios etc.
-- 📊 **Analytics:** visão agregada da base nacional, como empresas abertas e fechadas por setor e UF.
-- 🔌 **API pública:** integração com sistemas de terceiros (ERPs, onboarding de clientes, compliance).
+Today this check is usually manual and one-off: someone looks up the CNPJ during onboarding and
+never looks again. When the problem shows up (a payment to a closed company, an irregular supplier,
+a customer with fraud risk), it is already too late.
 
-**Para quem:** escritórios de contabilidade, fintechs, times de compliance/KYB e empresas com muitos fornecedores.
+## The solution
+
+**Lince** (Portuguese for *lynx*) continuously watches a portfolio of CNPJs and alerts as soon as
+something changes.
+
+- 📋 **Watchlists:** each customer registers the CNPJs they want to follow.
+- 🔔 **Real-time alerts:** dashboard notifications, e-mail and webhooks when a change is detected.
+- 🕓 **Timeline:** full change history for each company.
+- ⚠️ **Risk score:** based on registration status, company age, recent partner changes, etc.
+- 📊 **Analytics:** aggregated view of the national registry, such as companies opened and closed
+  by sector and state.
+- 🔌 **Public API:** integration with third-party systems (ERPs, customer onboarding, compliance).
+
+**Who it is for:** accounting firms, fintechs, compliance/KYB teams and companies with many
+suppliers.
 
 ---
 
-## Arquitetura
+## Architecture
 
-O sistema é dividido em **4 microserviços** em Elixir, que se comunicam por **APIs HTTP**.
+The system is split into **4 Elixir microservices** that communicate through **HTTP APIs**. Each
+service owns its data: no service reads another service's database.
 
 ```mermaid
 flowchart LR
-    RF[(Dados abertos<br/>CNPJ - Receita)] --> ING[ingestor]
-    API[APIs públicas<br/>de CNPJ] --> MON[monitor]
+    RF[(Receita Federal<br/>open CNPJ data)] --> ING[ingestor]
+    API[Public CNPJ<br/>APIs] --> MON[monitor]
 
-    ING -->|base completa| CH[(ClickHouse)]
-    ING -->|mudanças detectadas| MON
-    MON -->|histórico de mudanças| TS[(Postgres +<br/>TimescaleDB)]
-    MON -->|eventos| NOT[notifier]
-    NOT -->|webhook / e-mail| CLI[Clientes]
+    ING --> CH[(ClickHouse)]
+    MON --> TS[(Postgres +<br/>TimescaleDB)]
 
-    POR[portal<br/>LiveView] --> TS
-    POR --> CH
-    MON -.->|tempo real| POR
+    ING -->|detected changes| MON
+    MON -->|change events| NOT[notifier]
+    NOT -->|webhook / e-mail| CUS[Customers]
 
-    ING & MON & NOT & POR -.->|métricas| PROM[Prometheus] --> GRA[Grafana]
+    POR[portal<br/>LiveView] -->|HTTP| MON
+    POR -->|HTTP| ING
+    MON -.->|real-time events| POR
+
+    ING & MON & NOT & POR -.->|metrics| PROM[Prometheus] --> GRA[Grafana]
 ```
 
-### Serviços
+### Services
 
-| Serviço | Porta | Responsabilidade |
+| Service | Port | Responsibility | Database |
+|---|---|---|---|
+| **portal** | 4000 | Phoenix LiveView dashboard: watchlists, real-time alerts, timeline, analytics, multi-tenant authentication | — |
+| **monitor** | 4001 | Periodic checks of watched CNPJs, change detection and change history | Postgres + TimescaleDB |
+| **ingestor** | 4002 | Concurrent download and processing of Receita Federal's monthly open data; month-over-month diff | ClickHouse |
+| **notifier** | 4003 | Notification delivery (webhooks and e-mail) with retries and failure handling | — |
+
+### Data
+
+| Database | Used for | Why |
 |---|---|---|
-| **portal** | 4000 | Painel web em Phoenix LiveView: carteiras, alertas em tempo real, linha do tempo, analytics e autenticação multi-tenant |
-| **monitor** | 4001 | Consulta periódica dos CNPJs monitorados, detecção de mudanças e registro do histórico |
-| **ingestor** | 4002 | Download e processamento concorrente da base mensal de dados abertos da Receita; carga no ClickHouse e comparação entre meses |
-| **notifier** | 4003 | Entrega de notificações (webhooks e e-mail) com retentativa e controle de falhas |
+| **PostgreSQL + TimescaleDB** | Customers, watchlists and per-CNPJ change history | Transactional data with relational integrity; the change history is a time series, a natural fit for hypertables |
+| **ClickHouse** | The full registry of Brazilian companies and analytical queries | Tens of millions of rows; columnar storage answers aggregate queries in seconds |
 
-### Dados
+### Inside each service
 
-| Banco | Uso | Por quê |
-|---|---|---|
-| **PostgreSQL + TimescaleDB** | Clientes, carteiras e histórico de mudanças por CNPJ | Dados transacionais com integridade relacional; o histórico de mudanças é uma série temporal, ideal para hypertables |
-| **ClickHouse** | Base completa de empresas do Brasil e consultas analíticas | Dezenas de milhões de registros; consultas agregadas em segundos com armazenamento colunar |
+Each service follows the Phoenix convention of separating the **domain** from the **web layer**:
+
+```
+lib/
+├── ingestor.ex          # facade: the only public API of the domain
+├── ingestor/            # business rules (pipelines, schemas); knows nothing about HTTP
+└── ingestor_web/        # router, controllers and JSON views; calls only the facade
+```
+
+The web layer can change without touching business rules, and the domain can be tested without
+HTTP.
 
 ---
 
-## Stack
+## Repository layout
 
-- **Linguagem:** Elixir / Erlang OTP
+```
+.
+├── docker-compose.yml   # local infrastructure + tests container
+├── Makefile             # shortcuts for tests and lint
+├── infra/               # Prometheus, Grafana and the Elixir dev/test image
+└── services/
+    ├── ingestor/        # independent Mix project
+    ├── monitor/         # (planned)
+    ├── notifier/        # (planned)
+    └── portal/          # (planned)
+```
+
+### Why a monorepo?
+
+Microservices are defined by **how services run**, not by how many repositories hold them. Each
+service here has its own container, its own database, communicates only over HTTP and never
+imports code from another service. What a single repository adds is convenience: one
+`docker compose up` starts the whole system, and the full architecture is visible in one place.
+
+Independence is kept on purpose: each service has its own Mix project, its own CI workflow
+(triggered only by changes in its folder) and its own README. Any service can be extracted into a
+separate repository with its full history using `git subtree split --prefix=services/<name>`.
+
+---
+
+## Tech stack
+
+- **Language:** Elixir / Erlang OTP
 - **Web:** Phoenix, Phoenix LiveView
-- **Jobs agendados:** Oban
-- **Processamento concorrente:** Broadway / Flow
-- **HTTP entre serviços:** Req
-- **Bancos:** PostgreSQL + TimescaleDB, ClickHouse
-- **Observabilidade:** PromEx, Prometheus, Grafana
-- **Testes:** ExUnit, Mox
-- **Infra local:** Docker Compose
+- **Scheduled jobs:** Oban
+- **Concurrent processing:** Broadway / Flow
+- **HTTP between services:** Req
+- **Databases:** PostgreSQL + TimescaleDB, ClickHouse
+- **Observability:** PromEx, Prometheus, Grafana
+- **Tests:** ExUnit, Mox
+- **Local infrastructure:** Docker Compose
 - **CI/CD:** GitHub Actions
-- **Deploy (planejado):** AWS, com infraestrutura como código
+- **Deploy (planned):** AWS, with infrastructure as code
 
 ---
 
-## Como rodar localmente
+## Running locally
 
-### Pré-requisitos
+### Prerequisites
 
-- Docker e Docker Compose
-- Erlang/OTP 29 e Elixir 1.20 (recomendado instalar com [mise](https://mise.jdx.dev))
+- Docker and Docker Compose
+- *Optional, to run services outside Docker:* Erlang/OTP 29 and Elixir 1.20
+  (installing with [mise](https://mise.jdx.dev) is recommended)
 
-### Subindo a infraestrutura
+### Starting the infrastructure
 
 ```bash
 git clone git@github.com:luizbahl/lince.git
 cd lince
-docker compose -f infra/docker-compose.yml up -d
+docker compose up -d --wait
 ```
 
-| Serviço | Endereço | Credenciais |
+| Service | Address | Credentials |
 |---|---|---|
 | PostgreSQL + TimescaleDB | `localhost:54320` | postgres / postgres |
 | ClickHouse | http://localhost:8123/play | lince / lince |
 | Prometheus | http://localhost:9090 | — |
 | Grafana | http://localhost:3000 | admin / admin |
 
-> As instruções para rodar cada serviço serão adicionadas conforme forem implementados.
+### Tests and lint
+
+Tests, formatting and Credo run inside a container, so no local Elixir install is needed:
+
+```bash
+make ingestor-test     # mix test
+make ingestor-lint     # mix format --check-formatted + mix credo --strict
+make ingestor-check    # both
+make ingestor-shell    # interactive shell inside the tests container
+```
+
+> Instructions to run each service will be added as they are implemented.
 
 ---
 
-## Decisões técnicas
+## Technical decisions
 
-- **Microserviços com HTTP direto:** cada serviço tem uma responsabilidade clara e escala de forma independente; o `ingestor`, por exemplo, faz processamento pesado só uma vez por mês. A comunicação síncrona via HTTP mantém o sistema simples; filas seriam consideradas se o volume de eventos exigisse desacoplamento maior.
-- **Dois bancos com papéis distintos:** OLTP (Postgres) para o que é transacional e OLAP (ClickHouse) para análise em grande volume, em vez de forçar um único banco a fazer as duas coisas.
-- **Versões de imagens fixadas:** garantem reprodutibilidade. O ClickHouse está na versão **24.8 LTS** por compatibilidade com CPUs sem suporte a AVX.
-- **Custo zero para desenvolver:** tudo roda localmente; o pipeline de deploy fica documentado e versionado.
+- **Microservices over direct HTTP:** each service has a clear responsibility and scales
+  independently; the `ingestor`, for instance, does heavy processing only once a month. Synchronous
+  HTTP keeps the system simple; a message queue would be considered if event volume required
+  stronger decoupling.
+- **Two databases with distinct roles:** OLTP (Postgres) for transactional data and OLAP
+  (ClickHouse) for large-scale analytics, instead of forcing one database to do both.
+- **Pinned image versions:** for reproducibility. ClickHouse is pinned to **24.8 LTS** for
+  compatibility with CPUs without AVX support.
+- **Zero cost to develop:** everything runs locally; the deploy pipeline is versioned and
+  documented but not active.
 
 ---
 
 ## Roadmap
 
-- [x] Infraestrutura local (Postgres/Timescale, ClickHouse, Prometheus, Grafana)
-- [ ] **ingestor:** download e carga da base de dados abertos no ClickHouse
-- [ ] **ingestor:** detecção de mudanças entre meses
-- [ ] **monitor:** consulta periódica dos CNPJs monitorados com Oban
-- [ ] **monitor:** histórico de mudanças em hypertable do TimescaleDB
-- [ ] **notifier:** webhooks com retentativa e e-mail
-- [ ] **portal:** autenticação e multi-tenancy
-- [ ] **portal:** carteiras, alertas em tempo real e linha do tempo
-- [ ] **portal:** dashboards analíticos com ClickHouse
-- [ ] Score de risco
-- [ ] Métricas com PromEx e dashboards no Grafana versionados
-- [ ] CI com GitHub Actions (testes, lint, build)
-- [ ] Pipeline de deploy na AWS (infraestrutura como código)
-- [ ] API pública documentada
+- [x] Local infrastructure (Postgres/Timescale, ClickHouse, Prometheus, Grafana)
+- [x] Containerized tests and lint
+- [ ] **ingestor:** download and load the open data into ClickHouse
+- [ ] **ingestor:** month-over-month change detection
+- [ ] **monitor:** periodic checks of watched CNPJs with Oban
+- [ ] **monitor:** change history in a TimescaleDB hypertable
+- [ ] **notifier:** webhooks with retries and e-mail
+- [ ] **portal:** authentication and multi-tenancy
+- [ ] **portal:** watchlists, real-time alerts and timeline
+- [ ] **portal:** analytics dashboards
+- [ ] Risk score
+- [ ] PromEx metrics and versioned Grafana dashboards
+- [ ] CI with GitHub Actions (tests, lint, build)
+- [ ] AWS deploy pipeline (infrastructure as code)
+- [ ] Documented public API
 
 ---
 
-## Fonte dos dados
+## Data source
 
-O Lince utiliza os **Dados Abertos do CNPJ**, publicados mensalmente pela Receita Federal, além de APIs públicas de consulta de CNPJ. São apenas informações públicas.
-
----
-
-## 🇺🇸 English
-
-**Lince** (*lynx*) continuously monitors Brazilian companies (CNPJ) and alerts users in real time when registry data changes, such as status, legal name, partners or economic activity.
-
-It is built as **4 Elixir microservices** communicating over HTTP:
-
-- **ingestor:** concurrently processes Brazil's monthly open company registry (tens of millions of records) into **ClickHouse** and detects month-over-month changes.
-- **monitor:** periodically checks watched companies with **Oban** and stores the change history in **TimescaleDB** hypertables.
-- **notifier:** delivers webhooks and e-mails with retries.
-- **portal:** a multi-tenant **Phoenix LiveView** dashboard with real-time alerts, company timelines, risk scores and analytics.
-
-Observability is handled with **PromEx, Prometheus and Grafana**, CI with **GitHub Actions**, and the AWS deployment pipeline is defined as code.
+Lince uses the **open CNPJ data** published monthly by Receita Federal, plus public CNPJ lookup
+APIs. Only public information is used.
 
 ---
 
-## Autor
+## 🇧🇷 Em português
+
+O **Lince** monitora continuamente empresas brasileiras pelo CNPJ e avisa em tempo real quando há
+mudanças cadastrais: situação, razão social, quadro societário ou atividade econômica. É voltado a
+escritórios de contabilidade, fintechs e times de compliance que precisam acompanhar fornecedores e
+clientes.
+
+O sistema é formado por **4 microserviços em Elixir** que se comunicam por HTTP (ingestor, monitor,
+notifier e portal), usando PostgreSQL + TimescaleDB, ClickHouse, Phoenix LiveView e observabilidade
+com Prometheus e Grafana. Os dados vêm da base aberta do CNPJ publicada mensalmente pela Receita
+Federal.
+
+---
+
+## Author
 
 **Luiz Bahl** · [GitHub](https://github.com/luizbahl)
