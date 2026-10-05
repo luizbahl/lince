@@ -10,6 +10,11 @@ read by recruiters, so code quality, tests and documentation matter as much as f
   no direct translation (e.g. CNPJ) keep their original name.
 - Conversation with the author can be in Portuguese.
 - Commits follow Conventional Commits (`feat(ingestor): ...`, `chore: ...`, `docs: ...`).
+- GitHub Flow: one branch per change, named with the same prefix (`feat/ingestor-parse-companies`,
+  `chore/...`, `docs/...`), merged into `main` only through PRs (rebase or merge commit, not
+  squash). No `develop`/`qa` branch; CI on the PR is the quality gate.
+- The author runs `mix test`, `mix compile`, `mix format`, `mix credo` and `mix ecto.*` himself and
+  reviews every diff before committing.
 - The author is learning: explain the *why* of each step and prefer small, verifiable steps.
 - Zero infrastructure budget: everything must run locally; the AWS deploy pipeline is written and
   documented but not active.
