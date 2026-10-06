@@ -1,4 +1,4 @@
-defmodule Ingestor.Pipeline.Load do
+defmodule Ingestor.Companies do
   @moduledoc """
   Inserts company rows into ClickHouse in batches.
 
@@ -11,8 +11,8 @@ defmodule Ingestor.Pipeline.Load do
 
   @default_batch_size 10_000
 
-  @spec insert(Enumerable.t(map()), pos_integer()) :: non_neg_integer()
-  def insert(companies, batch_size \\ @default_batch_size) do
+  @spec insert_in_batches(Enumerable.t(map()), pos_integer()) :: non_neg_integer()
+  def insert_in_batches(companies, batch_size \\ @default_batch_size) do
     companies
     |> Stream.chunk_every(batch_size)
     |> Enum.reduce(0, fn batch, inserted ->

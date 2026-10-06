@@ -2,12 +2,15 @@ defmodule Ingestor.Pipeline.ImportCompanies do
   @moduledoc """
   Imports one Receita Federal `Empresas*.zip` file into ClickHouse:
 
-      validate_input_parameters -> extract -> load -> output
+      validate_input_parameters -> put_imported_at -> extract -> load -> output
+
+  Re-importing a file is safe: every row carries the same `imported_at`, the version column of
+  the `companies` ReplacingMergeTree, so the newer import replaces the older one.
   """
 
   use Ingestor.Pipeline
 
-  alias Ingestor.Pipeline.{Extract, Load, Parse}
+  alias Ingestor.{Companies, Receita}
 
   defmodule Input do
     @moduledoc false
@@ -44,6 +47,7 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     try do
       attrs
       |> validate_input_parameters(Input)
+      |> put_imported_at()
       |> extract(tmp_dir)
       |> load()
       |> output()
@@ -52,12 +56,18 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     end
   end
 
+  defp put_imported_at({:error, _, _} = error), do: error
+
+  defp put_imported_at({:ok, params}) do
+    {:ok, Map.put(params, :imported_at, DateTime.utc_now())}
+  end
+
   defp extract({:error, _, _} = error, _tmp_dir), do: error
 
   defp extract({:ok, params}, tmp_dir) do
     File.mkdir_p!(tmp_dir)
 
-    case Extract.extract(params.zip_path, tmp_dir) do
+    case Receita.Zip.extract(params.zip_path, tmp_dir) do
       {:ok, csv_paths} -> {:ok, Map.put(params, :csv_paths, csv_paths)}
       {:error, reason} -> {:error, :extract_failed, reason}
     end
@@ -69,11 +79,16 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     inserted =
       params.csv_paths
       |> Enum.map(fn csv_path ->
-        csv_path |> Parse.companies(params.reference_month) |> Load.insert()
+        csv_path
+        |> Receita.Companies.stream(params.reference_month)
+        |> Stream.map(&Map.put(&1, :imported_at, params.imported_at))
+        |> Companies.insert_in_batches()
       end)
       |> Enum.sum()
 
     {:ok, Map.put(params, :inserted, inserted)}
+  rescue
+    exception -> {:error, :load_failed, exception}
   end
 
   defp output({:error, _, _} = error), do: error

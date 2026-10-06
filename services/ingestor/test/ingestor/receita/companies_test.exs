@@ -1,9 +1,9 @@
-defmodule Ingestor.Pipeline.ParseTest do
+defmodule Ingestor.Receita.CompaniesTest do
   use ExUnit.Case, async: true
 
   import Ingestor.ReceitaFixtures
 
-  alias Ingestor.Pipeline.Parse
+  alias Ingestor.Receita.Companies
 
   @month ~D[2026-09-01]
 
@@ -19,7 +19,7 @@ defmodule Ingestor.Pipeline.ParseTest do
                responsible_qualification_code: "10",
                size_code: "05",
                federative_entity: ""
-             } = company = Parse.to_company(fields, @month)
+             } = company = Companies.to_company(fields, @month)
 
       assert Decimal.equal?(company.share_capital, Decimal.new("120000000000.00"))
     end
@@ -28,20 +28,20 @@ defmodule Ingestor.Pipeline.ParseTest do
       latin1_name = <<"A", 0xC7, 0xDA, "CAR LTDA">>
       fields = ["00000002", latin1_name, "2062", "49", "0,00", "01", ""]
 
-      assert %{legal_name: "AÇÚCAR LTDA"} = Parse.to_company(fields, @month)
+      assert %{legal_name: "AÇÚCAR LTDA"} = Companies.to_company(fields, @month)
     end
 
     test "reads the comma as the decimal separator" do
       fields = ["00000003", "EMPRESA", "2062", "49", "1500,75", "01", ""]
 
       assert Decimal.equal?(
-               Parse.to_company(fields, @month).share_capital,
+               Companies.to_company(fields, @month).share_capital,
                Decimal.new("1500.75")
              )
     end
   end
 
-  describe "companies/2" do
+  describe "stream/2" do
     # @tag :tmp_dir gives the test its own empty directory in `context.tmp_dir`.
     @tag :tmp_dir
     test "streams every line of the file, including the first one", %{tmp_dir: tmp_dir} do
@@ -53,7 +53,7 @@ defmodule Ingestor.Pipeline.ParseTest do
       ])
 
       assert [%{cnpj_root: "00000000"}, %{cnpj_root: "00000001"}] =
-               csv_path |> Parse.companies(@month) |> Enum.to_list()
+               csv_path |> Companies.stream(@month) |> Enum.to_list()
     end
   end
 end

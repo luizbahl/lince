@@ -23,6 +23,24 @@ defmodule IngestorTest do
       assert banco.legal_name == "BANCO DO BRASIL SA"
       assert Decimal.equal?(banco.share_capital, Decimal.new("120000000000.00"))
       assert acucar.legal_name == "AÇÚCAR LTDA", "ISO-8859-1 name must be stored as UTF-8"
+
+      assert banco.imported_at == acucar.imported_at, "one version for the whole import"
+      assert DateTime.diff(DateTime.utc_now(), banco.imported_at) < 60
+    end
+
+    test "re-importing the same month keeps only the latest version", %{tmp_dir: tmp_dir} do
+      first_dir = tmp_dir |> Path.join("first") |> tap(&File.mkdir_p!/1)
+      second_dir = tmp_dir |> Path.join("second") |> tap(&File.mkdir_p!/1)
+      month = ~D[2026-09-01]
+
+      first_zip = empresas_zip!(first_dir, [company_line("00000001", "OLD NAME LTDA")])
+      second_zip = empresas_zip!(second_dir, [company_line("00000001", "NEW NAME LTDA")])
+
+      assert {:ok, _} = Ingestor.import_companies(%{zip_path: first_zip, reference_month: month})
+      assert {:ok, _} = Ingestor.import_companies(%{zip_path: second_zip, reference_month: month})
+
+      assert [company] = ClickhouseRepo.all(Company, settings: [final: 1])
+      assert company.legal_name == "NEW NAME LTDA"
     end
 
     test "returns the changeset when the input is invalid", %{tmp_dir: tmp_dir} do
@@ -35,6 +53,17 @@ defmodule IngestorTest do
       assert {"file not found", _} = changeset.errors[:zip_path]
       assert {"must be the first day of the month", _} = changeset.errors[:reference_month]
       assert ClickhouseRepo.all(Company) == [], "nothing is loaded when a step fails"
+    end
+
+    test "returns :load_failed instead of raising on a malformed line", %{tmp_dir: tmp_dir} do
+      zip_path =
+        empresas_zip!(tmp_dir, [
+          company_line("00000000", "EMPRESA"),
+          ~s("00000001";"MISSING FIELDS";"2062"\n)
+        ])
+
+      assert {:error, :load_failed, %FunctionClauseError{}} =
+               Ingestor.import_companies(%{zip_path: zip_path, reference_month: ~D[2026-09-01]})
     end
   end
 end

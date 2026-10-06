@@ -1,4 +1,4 @@
-defmodule Ingestor.Pipeline.Parse do
+defmodule Ingestor.Receita.Companies do
   @moduledoc """
   Turns an extracted `Empresas` CSV file into a lazy stream of rows for the `companies` table.
 
@@ -6,13 +6,13 @@ defmodule Ingestor.Pipeline.Parse do
   line with constant memory.
   """
 
-  alias Ingestor.Pipeline.ReceitaCSV
+  alias Ingestor.Receita.CSV
 
-  @spec companies(Path.t(), Date.t()) :: Enumerable.t(map())
-  def companies(csv_path, %Date{} = reference_month) do
+  @spec stream(Path.t(), Date.t()) :: Enumerable.t(map())
+  def stream(csv_path, %Date{} = reference_month) do
     csv_path
     |> File.stream!()
-    |> ReceitaCSV.parse_stream(skip_headers: false)
+    |> CSV.parse_stream(skip_headers: false)
     |> Stream.map(&to_company(&1, reference_month))
   end
 

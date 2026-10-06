@@ -1,6 +1,6 @@
 # NimbleCSV.define/2 is a macro that *generates* the module at compile time,
 # so this file has no `defmodule` of its own.
-NimbleCSV.define(Ingestor.Pipeline.ReceitaCSV,
+NimbleCSV.define(Ingestor.Receita.CSV,
   separator: ";",
   escape: "\"",
   moduledoc: """

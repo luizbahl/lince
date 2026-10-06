@@ -1,4 +1,4 @@
-defmodule Ingestor.Pipeline.Extract do
+defmodule Ingestor.Receita.Zip do
   @moduledoc """
   Unzips a Receita Federal archive to disk.
 

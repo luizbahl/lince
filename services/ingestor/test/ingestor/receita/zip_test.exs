@@ -1,9 +1,9 @@
-defmodule Ingestor.Pipeline.ExtractTest do
+defmodule Ingestor.Receita.ZipTest do
   use ExUnit.Case, async: true
 
   import Ingestor.ReceitaFixtures
 
-  alias Ingestor.Pipeline.Extract
+  alias Ingestor.Receita.Zip
 
   @moduletag :tmp_dir
 
@@ -13,12 +13,12 @@ defmodule Ingestor.Pipeline.ExtractTest do
     dest_dir = Path.join(tmp_dir, "out")
     File.mkdir_p!(dest_dir)
 
-    assert {:ok, [csv_path]} = Extract.extract(zip_path, dest_dir)
+    assert {:ok, [csv_path]} = Zip.extract(zip_path, dest_dir)
     assert Path.basename(csv_path) == "K3241.K03200Y1.D60912.EMPRECSV"
     assert File.read!(csv_path) == line
   end
 
   test "returns an error when the zip does not exist", %{tmp_dir: tmp_dir} do
-    assert {:error, _reason} = Extract.extract(Path.join(tmp_dir, "missing.zip"), tmp_dir)
+    assert {:error, _reason} = Zip.extract(Path.join(tmp_dir, "missing.zip"), tmp_dir)
   end
 end
