@@ -6,8 +6,7 @@ defmodule Ingestor.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      # Starts a worker by calling: Ingestor.Worker.start_link(arg)
-      # {Ingestor.Worker, arg}
+      Ingestor.ClickhouseRepo
     ]
 
     opts = [strategy: :one_for_one, name: Ingestor.Supervisor]

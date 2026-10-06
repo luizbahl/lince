@@ -52,9 +52,10 @@ Phoenix-style split between domain and web layer (example: ingestor):
 lib/
 ├── ingestor.ex            # facade: the only public API of the domain
 ├── ingestor/              # domain — business rules, knows nothing about HTTP
+│   ├── companies.ex       # persistence helpers (insert_in_batches/2)
 │   ├── companies/         # Ecto schemas live here, not in the web layer
-│   ├── pipeline.ex        # orchestrates the pipeline steps
-│   └── pipeline/          # download.ex, parse.ex, load.ex ...
+│   ├── receita/           # Receita Federal file format: zip.ex, csv.ex, companies.ex
+│   └── pipeline/          # use cases only (railway), one module each: import_companies.ex
 ├── ingestor_web.ex
 └── ingestor_web/          # HTTP layer — translates requests to facade calls
     ├── endpoint.ex
@@ -62,6 +63,20 @@ lib/
     └── controllers/       # *_controller.ex + *_json.ex (response format)
 ```
 
+- Pipelines (railway style, the author's preferred pattern), see `Ingestor.Pipeline.ImportCompanies`:
+  - `use Ingestor.Pipeline`; nested `Input` (`embedded_schema` + `changeset/1`) and `Output`
+    (struct);
+  - `call(attrs)` pipes `validate_input_parameters(attrs, Input)` through private steps and ends
+    with `output/1`;
+  - steps return `{:ok, params}` or `{:error, type, detail}` (3-tuple); each step's **first clause
+    passes `{:error, _, _}` along**; invalid input is `{:error, :invalid_input, changeset}`;
+  - no `IO.inspect` left in pipelines;
+  - only use cases live in `pipeline/`; the helpers they call (`Receita.*`, `Companies`) are plain
+    modules, not pipelines.
+- Facade functions (`Ingestor.*`) pattern-match the required atom keys and build the pipeline's
+  `%Input{}` (optional fields via `Map.get(params, :key, default)`); they do not take a loose
+  `attrs` map. The web layer converts string-keyed request params before calling the facade. A
+  missing key is a caller bug (`FunctionClauseError`), not `:invalid_input`.
 - `*_web` modules call **only** the facade (`Ingestor.*`), never pipeline modules or the Repo.
 - Services become Phoenix API-only projects (no HTML/assets) when they need routes; portal is the
   only one with LiveView.

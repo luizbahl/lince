@@ -6,3 +6,6 @@ config :ingestor, Ingestor.ClickhouseRepo,
   database: "lince_test",
   username: "lince",
   password: "lince"
+
+# Hide Ecto's per-query debug logs during tests.
+config :logger, level: :warning
