@@ -16,6 +16,15 @@ defmodule Ingestor.CompaniesTest do
     }
   end
 
+  describe "imported?/1" do
+    test "tells whether the month has any company" do
+      Companies.insert_in_batches([company("00000001")])
+
+      assert Companies.imported?(~D[2026-09-01])
+      refute Companies.imported?(~D[2026-08-01])
+    end
+  end
+
   describe "insert_in_batches/2" do
     test "inserts all rows, split in batches, and returns the count" do
       companies = Enum.map(["00000001", "00000002", "00000003"], &company/1)
