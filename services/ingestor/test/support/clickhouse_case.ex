@@ -14,11 +14,13 @@ defmodule Ingestor.ClickhouseCase do
     quote do
       alias Ingestor.ClickhouseRepo
       alias Ingestor.Companies.Company
+      alias Ingestor.CompanyChanges.CompanyChange
     end
   end
 
   setup do
     ClickhouseRepo.query!("TRUNCATE TABLE companies")
+    ClickhouseRepo.query!("TRUNCATE TABLE company_changes")
     :ok
   end
 end
