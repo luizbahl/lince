@@ -105,7 +105,7 @@ Receita Federal open CNPJ data: `https://arquivos.receitafederal.gov.br/dados/cn
 — zipped CSVs, `;` separator, ISO-8859-1 encoding. Files: `Empresas0..9`, `Estabelecimentos0..9`,
 `Socios0..9`, plus lookup tables (CNAEs, municipalities, legal natures...).
 
-`companies` table (ClickHouse, MergeTree, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month)`):
+`companies` table (ClickHouse, `ReplacingMergeTree(imported_at)`, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month)`; read with `FINAL`):
 
 | Receita field | Column |
 |---|---|
@@ -117,12 +117,22 @@ Receita Federal open CNPJ data: `https://arquivos.receitafederal.gov.br/dados/cn
 | porte_empresa | size_code |
 | ente_federativo_responsavel | federative_entity |
 
+`company_changes` table (ClickHouse, MergeTree, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month, field)`):
+one row per change (`created` / `removed` / `updated` + `field`, `previous_value`, `current_value`
+as strings). Filled by `Ingestor.CompanyChanges.replace_month/2`: a `GROUP BY cnpj_root` diff
+inside ClickHouse, made idempotent with `DROP PARTITION` before the insert.
+
 ## Current status / next steps
 
 - [x] Local infra with Docker Compose
 - [x] ingestor project with `Ingestor.ClickhouseRepo` (ecto_ch) and `companies` migration
 - [x] `tests` container working (`mix test`, format, Credo)
 - [x] Rewrite README with English as the main language (short Portuguese section at the end, explain what a CNPJ is)
-- [ ] ingestor: stream-parse `Empresas*.zip` (NimbleCSV, ISO-8859-1 → UTF-8) and batch-insert into ClickHouse
-- [ ] ingestor: month-over-month change detection
-- [ ] then monitor, notifier, portal, CI (GitHub Actions), deploy pipeline
+- [x] ingestor: stream-parse `Empresas*.zip` (NimbleCSV, ISO-8859-1 → UTF-8) and batch-insert into ClickHouse
+- [x] ingestor: CI workflow (GitHub Actions)
+- [x] ingestor: month-over-month change detection for `companies` (`Ingestor.detect_company_changes/1`)
+- [ ] ingestor: re-import drops the month's partition first (a company missing from the new file
+      currently survives in `companies`); then `companies` can go back to plain MergeTree
+- [ ] ingestor: import `Estabelecimentos` (status, CNAE) and `Socios` (partners) + their diffs
+- [ ] ingestor: HTTP API (Phoenix API-only) for the monitor to query changes by CNPJ
+- [ ] then monitor, notifier, portal, CI for each service, deploy pipeline
