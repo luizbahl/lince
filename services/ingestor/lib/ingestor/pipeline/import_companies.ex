@@ -1,11 +1,13 @@
 defmodule Ingestor.Pipeline.ImportCompanies do
   @moduledoc """
-  Imports one Receita Federal `Empresas*.zip` file into ClickHouse:
+  Imports every Receita Federal `Empresas*.zip` file of a month directory into ClickHouse:
 
-      validate_input_parameters -> put_imported_at -> extract -> load -> output
+      validate_input_parameters -> put_imported_at -> list_zip_paths -> clear_staging
+        -> load -> publish -> output
 
-  Re-importing a file is safe: every row carries the same `imported_at`, the version column of
-  the `companies` ReplacingMergeTree, so the newer import replaces the older one.
+  The whole month is loaded into `companies_staging` and only then swapped into `companies`
+  (see `Ingestor.Companies`), so re-importing a month replaces it completely and a failed import
+  leaves the previous data untouched.
   """
 
   use Ingestor.Pipeline
@@ -18,17 +20,17 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     import Ecto.Changeset
 
     embedded_schema do
-      field(:zip_path, :string)
+      field(:data_dir, :string)
       field(:reference_month, :date)
     end
 
     @doc false
     def changeset(%Input{} = input \\ %Input{}, attrs) do
       input
-      |> cast(attrs, [:zip_path, :reference_month])
-      |> validate_required([:zip_path, :reference_month])
-      |> validate_change(:zip_path, fn :zip_path, path ->
-        if File.regular?(path), do: [], else: [zip_path: "file not found"]
+      |> cast(attrs, [:data_dir, :reference_month])
+      |> validate_required([:data_dir, :reference_month])
+      |> validate_change(:data_dir, fn :data_dir, path ->
+        if File.dir?(path), do: [], else: [data_dir: "directory not found"]
       end)
       |> validate_change(:reference_month, fn :reference_month, date ->
         if date.day == 1, do: [], else: [reference_month: "must be the first day of the month"]
@@ -48,8 +50,10 @@ defmodule Ingestor.Pipeline.ImportCompanies do
       attrs
       |> validate_input_parameters(Input)
       |> put_imported_at()
-      |> extract(tmp_dir)
-      |> load()
+      |> list_zip_paths()
+      |> clear_staging()
+      |> load(tmp_dir)
+      |> publish()
       |> output()
     after
       File.rm_rf!(tmp_dir)
@@ -62,33 +66,66 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     {:ok, Map.put(params, :imported_at, DateTime.utc_now())}
   end
 
-  defp extract({:error, _, _} = error, _tmp_dir), do: error
+  defp list_zip_paths({:error, _, _} = error), do: error
 
-  defp extract({:ok, params}, tmp_dir) do
-    File.mkdir_p!(tmp_dir)
-
-    case Receita.Zip.extract(params.zip_path, tmp_dir) do
-      {:ok, csv_paths} -> {:ok, Map.put(params, :csv_paths, csv_paths)}
-      {:error, reason} -> {:error, :extract_failed, reason}
+  defp list_zip_paths({:ok, params}) do
+    case params.data_dir |> Path.join("Empresas*.zip") |> Path.wildcard() |> Enum.sort() do
+      [] -> {:error, :no_files, params.data_dir}
+      zip_paths -> {:ok, Map.put(params, :zip_paths, zip_paths)}
     end
   end
 
-  defp load({:error, _, _} = error), do: error
+  defp clear_staging({:error, _, _} = error), do: error
 
-  defp load({:ok, params}) do
-    inserted =
-      params.csv_paths
-      |> Enum.map(fn csv_path ->
-        csv_path
-        |> Receita.Companies.stream(params.reference_month)
-        |> Stream.map(&Map.put(&1, :imported_at, params.imported_at))
-        |> Companies.insert_in_batches()
-      end)
-      |> Enum.sum()
+  defp clear_staging({:ok, params}) do
+    case Companies.clear_staging(params.reference_month) do
+      :ok -> {:ok, params}
+      {:error, exception} -> {:error, :load_failed, exception}
+    end
+  end
 
-    {:ok, Map.put(params, :inserted, inserted)}
+  defp load({:error, _, _} = error, _tmp_dir), do: error
+
+  defp load({:ok, params}, tmp_dir) do
+    params.zip_paths
+    |> Enum.reduce_while({:ok, 0}, &load_zip(&1, &2, params, tmp_dir))
+    |> case do
+      {:ok, inserted} -> {:ok, Map.put(params, :inserted, inserted)}
+      {:error, _, _} = error -> error
+    end
   rescue
     exception -> {:error, :load_failed, exception}
+  end
+
+  defp load_zip(zip_path, {:ok, inserted_so_far}, params, tmp_dir) do
+    extract_dir = Path.join(tmp_dir, Path.basename(zip_path, ".zip"))
+    File.mkdir_p!(extract_dir)
+
+    case Receita.Zip.extract(zip_path, extract_dir) do
+      {:ok, csv_paths} ->
+        inserted = Enum.sum_by(csv_paths, &stage_csv(&1, params))
+        File.rm_rf!(extract_dir)
+        {:cont, {:ok, inserted_so_far + inserted}}
+
+      {:error, reason} ->
+        {:halt, {:error, :extract_failed, {zip_path, reason}}}
+    end
+  end
+
+  defp stage_csv(csv_path, params) do
+    csv_path
+    |> Receita.Companies.stream(params.reference_month)
+    |> Stream.map(&Map.put(&1, :imported_at, params.imported_at))
+    |> Companies.stage_in_batches()
+  end
+
+  defp publish({:error, _, _} = error), do: error
+
+  defp publish({:ok, params}) do
+    case Companies.publish_staging(params.reference_month) do
+      :ok -> {:ok, params}
+      {:error, exception} -> {:error, :publish_failed, exception}
+    end
   end
 
   defp output({:error, _, _} = error), do: error

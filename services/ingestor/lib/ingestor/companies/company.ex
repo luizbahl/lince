@@ -6,10 +6,8 @@ defmodule Ingestor.Companies.Company do
   because inserts are encoded in ClickHouse's binary format, where e.g. `FixedString(8)` and
   `String` are written differently.
 
-  The table is a `ReplacingMergeTree` versioned by `imported_at`: re-importing a month inserts
-  new rows and ClickHouse keeps only the latest per `(cnpj_root, reference_month)`. Until
-  background merges run, both versions exist, so reads must use `FINAL`
-  (`Repo.all(Company, settings: [final: 1])`).
+  Each month is written as a whole partition (see `Ingestor.Companies`), so there is exactly one
+  row per `(cnpj_root, reference_month)`. `imported_at` records when the month was imported.
   """
 
   use Ecto.Schema

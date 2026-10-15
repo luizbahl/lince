@@ -8,70 +8,102 @@ defmodule IngestorTest do
 
   @moduletag :tmp_dir
 
+  defp new_dir!(tmp_dir, name) do
+    tmp_dir |> Path.join(name) |> tap(&File.mkdir_p!/1)
+  end
+
   defp import_month!(tmp_dir, reference_month, lines) do
-    dir = tmp_dir |> Path.join(Date.to_iso8601(reference_month)) |> tap(&File.mkdir_p!/1)
-    zip_path = empresas_zip!(dir, lines)
+    data_dir = new_dir!(tmp_dir, Date.to_iso8601(reference_month))
+    empresas_zip!(data_dir, lines)
 
     {:ok, _} =
-      Ingestor.import_companies(%{zip_path: zip_path, reference_month: reference_month})
+      Ingestor.import_companies(%{data_dir: data_dir, reference_month: reference_month})
+  end
+
+  defp companies_by_cnpj_root do
+    Company |> ClickhouseRepo.all() |> Map.new(&{&1.cnpj_root, &1})
   end
 
   describe "import_companies/1" do
-    test "imports every company of the zip into ClickHouse", %{tmp_dir: tmp_dir} do
-      zip_path =
-        empresas_zip!(tmp_dir, [
+    test "imports every company of every zip of the month", %{tmp_dir: tmp_dir} do
+      empresas_zip!(
+        tmp_dir,
+        [
           company_line("00000000", "BANCO DO BRASIL SA", "120000000000,00"),
           company_line("00000002", "AÇÚCAR LTDA")
-        ])
+        ],
+        "Empresas0.zip"
+      )
 
-      assert {:ok, %ImportCompanies.Output{inserted: 2}} =
-               Ingestor.import_companies(%{zip_path: zip_path, reference_month: ~D[2026-09-01]})
+      empresas_zip!(tmp_dir, [company_line("00000003", "OUTRA LTDA")], "Empresas1.zip")
 
-      assert [banco, acucar] = ClickhouseRepo.all(Company) |> Enum.sort_by(& &1.cnpj_root)
+      assert {:ok, %ImportCompanies.Output{inserted: 3}} =
+               Ingestor.import_companies(%{data_dir: tmp_dir, reference_month: ~D[2026-09-01]})
+
+      assert %{"00000000" => banco, "00000002" => acucar, "00000003" => _} =
+               companies_by_cnpj_root()
+
       assert banco.legal_name == "BANCO DO BRASIL SA"
       assert Decimal.equal?(banco.share_capital, Decimal.new("120000000000.00"))
       assert acucar.legal_name == "AÇÚCAR LTDA", "ISO-8859-1 name must be stored as UTF-8"
 
-      assert banco.imported_at == acucar.imported_at, "one version for the whole import"
+      assert banco.imported_at == acucar.imported_at, "one timestamp for the whole import"
       assert DateTime.diff(DateTime.utc_now(), banco.imported_at) < 60
     end
 
-    test "re-importing the same month keeps only the latest version", %{tmp_dir: tmp_dir} do
-      first_dir = tmp_dir |> Path.join("first") |> tap(&File.mkdir_p!/1)
-      second_dir = tmp_dir |> Path.join("second") |> tap(&File.mkdir_p!/1)
+    test "re-importing a month replaces it and keeps the other months", %{tmp_dir: tmp_dir} do
+      import_month!(tmp_dir, ~D[2026-08-01], [company_line("00000009", "AUGUST LTDA")])
+
+      first_dir = new_dir!(tmp_dir, "first")
+      second_dir = new_dir!(tmp_dir, "second")
+
+      empresas_zip!(first_dir, [
+        company_line("00000001", "OLD NAME LTDA"),
+        company_line("00000002", "GONE LTDA")
+      ])
+
+      empresas_zip!(second_dir, [company_line("00000001", "NEW NAME LTDA")])
+
       month = ~D[2026-09-01]
+      assert {:ok, _} = Ingestor.import_companies(%{data_dir: first_dir, reference_month: month})
+      assert {:ok, _} = Ingestor.import_companies(%{data_dir: second_dir, reference_month: month})
 
-      first_zip = empresas_zip!(first_dir, [company_line("00000001", "OLD NAME LTDA")])
-      second_zip = empresas_zip!(second_dir, [company_line("00000001", "NEW NAME LTDA")])
-
-      assert {:ok, _} = Ingestor.import_companies(%{zip_path: first_zip, reference_month: month})
-      assert {:ok, _} = Ingestor.import_companies(%{zip_path: second_zip, reference_month: month})
-
-      assert [company] = ClickhouseRepo.all(Company, settings: [final: 1])
+      assert %{"00000001" => company, "00000009" => _} = companies = companies_by_cnpj_root()
+      assert map_size(companies) == 2, "a company missing from the new files is removed"
       assert company.legal_name == "NEW NAME LTDA"
+    end
+
+    test "a failed re-import keeps the month as it was", %{tmp_dir: tmp_dir} do
+      import_month!(tmp_dir, ~D[2026-09-01], [company_line("00000001", "EMPRESA")])
+
+      broken_dir = new_dir!(tmp_dir, "broken")
+
+      empresas_zip!(broken_dir, [
+        company_line("00000002", "EMPRESA"),
+        ~s("00000003";"MISSING FIELDS";"2062"\n)
+      ])
+
+      assert {:error, :load_failed, %FunctionClauseError{}} =
+               Ingestor.import_companies(%{data_dir: broken_dir, reference_month: ~D[2026-09-01]})
+
+      assert Map.keys(companies_by_cnpj_root()) == ["00000001"]
+    end
+
+    test "returns :no_files when the directory has no Empresas zip", %{tmp_dir: tmp_dir} do
+      assert {:error, :no_files, ^tmp_dir} =
+               Ingestor.import_companies(%{data_dir: tmp_dir, reference_month: ~D[2026-09-01]})
     end
 
     test "returns the changeset when the input is invalid", %{tmp_dir: tmp_dir} do
       assert {:error, :invalid_input, changeset} =
                Ingestor.import_companies(%{
-                 zip_path: Path.join(tmp_dir, "missing.zip"),
+                 data_dir: Path.join(tmp_dir, "missing"),
                  reference_month: ~D[2026-09-15]
                })
 
-      assert {"file not found", _} = changeset.errors[:zip_path]
+      assert {"directory not found", _} = changeset.errors[:data_dir]
       assert {"must be the first day of the month", _} = changeset.errors[:reference_month]
       assert ClickhouseRepo.all(Company) == [], "nothing is loaded when a step fails"
-    end
-
-    test "returns :load_failed instead of raising on a malformed line", %{tmp_dir: tmp_dir} do
-      zip_path =
-        empresas_zip!(tmp_dir, [
-          company_line("00000000", "EMPRESA"),
-          ~s("00000001";"MISSING FIELDS";"2062"\n)
-        ])
-
-      assert {:error, :load_failed, %FunctionClauseError{}} =
-               Ingestor.import_companies(%{zip_path: zip_path, reference_month: ~D[2026-09-01]})
     end
   end
 

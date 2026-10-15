@@ -38,7 +38,7 @@ defmodule Ingestor.CompanyChanges do
       anyIf(fields, reference_month = {$0:Date}) AS current_fields
     FROM (
       SELECT cnpj_root, reference_month, [#{@field_values}] AS fields
-      FROM companies FINAL
+      FROM companies
       WHERE reference_month IN ({$1:Date}, {$0:Date})
     )
     GROUP BY cnpj_root

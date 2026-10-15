@@ -14,10 +14,10 @@ defmodule Ingestor.ReceitaFixtures do
   end
 
   @doc """
-  Writes `lines` into a zip inside `dir` and returns the zip path.
+  Writes `lines` into a zip named `name` inside `dir` and returns the zip path.
   """
-  def empresas_zip!(dir, lines) do
-    zip_path = Path.join(dir, "Empresas1.zip")
+  def empresas_zip!(dir, lines, name \\ "Empresas1.zip") do
+    zip_path = Path.join(dir, name)
     entry = {~c"K3241.K03200Y1.D60912.EMPRECSV", IO.iodata_to_binary(lines)}
     {:ok, _} = :zip.create(String.to_charlist(zip_path), [entry])
     zip_path

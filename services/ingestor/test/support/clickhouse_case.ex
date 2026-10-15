@@ -20,6 +20,7 @@ defmodule Ingestor.ClickhouseCase do
 
   setup do
     ClickhouseRepo.query!("TRUNCATE TABLE companies")
+    ClickhouseRepo.query!("TRUNCATE TABLE companies_staging")
     ClickhouseRepo.query!("TRUNCATE TABLE company_changes")
     :ok
   end

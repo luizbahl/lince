@@ -11,11 +11,11 @@ defmodule Ingestor do
   alias Ingestor.Pipeline.{DetectCompanyChanges, ImportCompanies}
 
   def import_companies(%{
-        zip_path: zip_path,
+        data_dir: data_dir,
         reference_month: reference_month
       }) do
     ImportCompanies.call(%ImportCompanies.Input{
-      zip_path: zip_path,
+      data_dir: data_dir,
       reference_month: reference_month
     })
   end
