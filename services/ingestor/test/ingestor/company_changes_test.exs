@@ -1,7 +1,7 @@
 defmodule Ingestor.CompanyChangesTest do
   use Ingestor.ClickhouseCase, async: false
 
-  alias Ingestor.{Companies, CompanyChanges}
+  alias Ingestor.CompanyChanges
 
   @previous ~D[2026-08-01]
   @current ~D[2026-09-01]
@@ -33,7 +33,7 @@ defmodule Ingestor.CompanyChangesTest do
 
   describe "replace_month/2" do
     test "stores one row per changed field, with both values as strings" do
-      Companies.insert_in_batches([
+      ClickhouseRepo.insert_all(Company, [
         company(@previous, "00000001", %{legal_name: "OLD LTDA"}),
         company(@current, "00000001", %{
           legal_name: "NEW LTDA",
@@ -62,7 +62,7 @@ defmodule Ingestor.CompanyChangesTest do
     end
 
     test "detects created and removed companies and ignores unchanged ones" do
-      Companies.insert_in_batches([
+      ClickhouseRepo.insert_all(Company, [
         company(@previous, "00000001"),
         company(@current, "00000001"),
         company(@previous, "00000002"),
@@ -83,7 +83,10 @@ defmodule Ingestor.CompanyChangesTest do
         %{reference_month: @previous, cnpj_root: "88888888", change_type: "created"}
       ])
 
-      Companies.insert_in_batches([company(@previous, "00000001"), company(@current, "00000001")])
+      ClickhouseRepo.insert_all(Company, [
+        company(@previous, "00000001"),
+        company(@current, "00000001")
+      ])
 
       assert CompanyChanges.replace_month(@current, @previous) == 0
       assert [%{cnpj_root: "88888888"}] = stored_changes()

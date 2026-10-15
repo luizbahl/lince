@@ -52,7 +52,7 @@ Phoenix-style split between domain and web layer (example: ingestor):
 lib/
 ├── ingestor.ex            # facade: the only public API of the domain
 ├── ingestor/              # domain — business rules, knows nothing about HTTP
-│   ├── companies.ex       # persistence helpers (insert_in_batches/2)
+│   ├── companies.ex       # persistence helpers (stage_in_batches/2, publish_staging/1)
 │   ├── companies/         # Ecto schemas live here, not in the web layer
 │   ├── receita/           # Receita Federal file format: zip.ex, csv.ex, companies.ex
 │   └── pipeline/          # use cases only (railway), one module each: import_companies.ex
@@ -105,7 +105,9 @@ Receita Federal open CNPJ data: `https://arquivos.receitafederal.gov.br/dados/cn
 — zipped CSVs, `;` separator, ISO-8859-1 encoding. Files: `Empresas0..9`, `Estabelecimentos0..9`,
 `Socios0..9`, plus lookup tables (CNAEs, municipalities, legal natures...).
 
-`companies` table (ClickHouse, `ReplacingMergeTree(imported_at)`, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month)`; read with `FINAL`):
+`companies` table (ClickHouse, MergeTree, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month)`).
+A month is imported from its directory (all `Empresas*.zip`) into `companies_staging` (same
+structure) and swapped in atomically with `REPLACE PARTITION`:
 
 | Receita field | Column |
 |---|---|
@@ -131,8 +133,8 @@ inside ClickHouse, made idempotent with `DROP PARTITION` before the insert.
 - [x] ingestor: stream-parse `Empresas*.zip` (NimbleCSV, ISO-8859-1 → UTF-8) and batch-insert into ClickHouse
 - [x] ingestor: CI workflow (GitHub Actions)
 - [x] ingestor: month-over-month change detection for `companies` (`Ingestor.detect_company_changes/1`)
-- [ ] ingestor: re-import drops the month's partition first (a company missing from the new file
-      currently survives in `companies`); then `companies` can go back to plain MergeTree
+- [x] ingestor: import a whole month directory through `companies_staging` + `REPLACE PARTITION`
+      (re-imports drop companies missing from the new files); `companies` back to plain MergeTree
 - [ ] ingestor: import `Estabelecimentos` (status, CNAE) and `Socios` (partners) + their diffs
 - [ ] ingestor: HTTP API (Phoenix API-only) for the monitor to query changes by CNPJ
 - [ ] then monitor, notifier, portal, CI for each service, deploy pipeline
