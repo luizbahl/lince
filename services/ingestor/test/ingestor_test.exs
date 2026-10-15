@@ -4,9 +4,17 @@ defmodule IngestorTest do
 
   import Ingestor.ReceitaFixtures
 
-  alias Ingestor.Pipeline.ImportCompanies.Output
+  alias Ingestor.Pipeline.{DetectCompanyChanges, ImportCompanies}
 
   @moduletag :tmp_dir
+
+  defp import_month!(tmp_dir, reference_month, lines) do
+    dir = tmp_dir |> Path.join(Date.to_iso8601(reference_month)) |> tap(&File.mkdir_p!/1)
+    zip_path = empresas_zip!(dir, lines)
+
+    {:ok, _} =
+      Ingestor.import_companies(%{zip_path: zip_path, reference_month: reference_month})
+  end
 
   describe "import_companies/1" do
     test "imports every company of the zip into ClickHouse", %{tmp_dir: tmp_dir} do
@@ -16,7 +24,7 @@ defmodule IngestorTest do
           company_line("00000002", "AÇÚCAR LTDA")
         ])
 
-      assert {:ok, %Output{inserted: 2}} =
+      assert {:ok, %ImportCompanies.Output{inserted: 2}} =
                Ingestor.import_companies(%{zip_path: zip_path, reference_month: ~D[2026-09-01]})
 
       assert [banco, acucar] = ClickhouseRepo.all(Company) |> Enum.sort_by(& &1.cnpj_root)
@@ -64,6 +72,49 @@ defmodule IngestorTest do
 
       assert {:error, :load_failed, %FunctionClauseError{}} =
                Ingestor.import_companies(%{zip_path: zip_path, reference_month: ~D[2026-09-01]})
+    end
+  end
+
+  describe "detect_company_changes/1" do
+    test "stores what changed since the previous month", %{tmp_dir: tmp_dir} do
+      import_month!(tmp_dir, ~D[2026-08-01], [
+        company_line("00000001", "OLD NAME LTDA"),
+        company_line("00000002", "CLOSED LTDA")
+      ])
+
+      import_month!(tmp_dir, ~D[2026-09-01], [
+        company_line("00000001", "NEW NAME LTDA"),
+        company_line("00000003", "OPENED LTDA")
+      ])
+
+      assert {:ok, %DetectCompanyChanges.Output{changes: 3}} =
+               Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
+
+      changes =
+        CompanyChange
+        |> ClickhouseRepo.all()
+        |> Map.new(&{&1.cnpj_root, &1})
+
+      assert %{field: "legal_name", previous_value: "OLD NAME LTDA"} = changes["00000001"]
+      assert changes["00000001"].current_value == "NEW NAME LTDA"
+      assert changes["00000002"].change_type == "removed"
+      assert changes["00000003"].change_type == "created"
+    end
+
+    test "returns :month_not_imported when the previous month is missing", %{tmp_dir: tmp_dir} do
+      import_month!(tmp_dir, ~D[2026-09-01], [company_line("00000001", "EMPRESA")])
+
+      assert {:error, :month_not_imported, ~D[2026-08-01]} =
+               Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
+
+      assert ClickhouseRepo.all(CompanyChange) == [], "nothing is stored when a step fails"
+    end
+
+    test "returns the changeset when the input is invalid" do
+      assert {:error, :invalid_input, changeset} =
+               Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-15]})
+
+      assert {"must be the first day of the month", _} = changeset.errors[:reference_month]
     end
   end
 end
