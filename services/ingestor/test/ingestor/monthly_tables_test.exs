@@ -1,7 +1,7 @@
-defmodule Ingestor.CompaniesTest do
+defmodule Ingestor.MonthlyTablesTest do
   use Ingestor.ClickhouseCase, async: false
 
-  alias Ingestor.Companies
+  alias Ingestor.MonthlyTables
 
   @staging {"companies_staging", Company}
 
@@ -22,27 +22,33 @@ defmodule Ingestor.CompaniesTest do
     source |> ClickhouseRepo.all() |> Enum.map(& &1.cnpj_root) |> Enum.sort()
   end
 
-  describe "imported?/1" do
-    test "tells whether the month has any company" do
+  describe "imported?/2" do
+    test "tells whether the month has any row" do
       ClickhouseRepo.insert_all(Company, [company("00000001")])
 
-      assert Companies.imported?(~D[2026-09-01])
-      refute Companies.imported?(~D[2026-08-01])
+      assert MonthlyTables.imported?(Company, ~D[2026-09-01])
+      refute MonthlyTables.imported?(Company, ~D[2026-08-01])
     end
   end
 
-  describe "stage_in_batches/2" do
+  describe "staging_table/1" do
+    test "is the schema's table with a _staging suffix" do
+      assert MonthlyTables.staging_table(Company) == "companies_staging"
+    end
+  end
+
+  describe "stage_in_batches/3" do
     test "inserts all rows into the staging table, split in batches, and returns the count" do
       companies = Enum.map(["00000001", "00000002", "00000003"], &company/1)
 
-      assert Companies.stage_in_batches(companies, 2) == 3
+      assert MonthlyTables.stage_in_batches(Company, companies, 2) == 3
 
       assert cnpj_roots(@staging) == ["00000001", "00000002", "00000003"]
-      assert cnpj_roots(Company) == [], "nothing reaches companies before publish"
+      assert cnpj_roots(Company) == [], "nothing reaches the table before publish"
     end
 
     test "stores the values with their ClickHouse types" do
-      Companies.stage_in_batches([company("00000001")])
+      MonthlyTables.stage_in_batches(Company, [company("00000001")])
 
       assert [stored] = ClickhouseRepo.all(@staging)
       assert stored.reference_month == ~D[2026-09-01]
@@ -50,32 +56,35 @@ defmodule Ingestor.CompaniesTest do
     end
 
     test "accepts an empty stream" do
-      assert Companies.stage_in_batches([]) == 0
+      assert MonthlyTables.stage_in_batches(Company, []) == 0
     end
   end
 
-  describe "publish_staging/1" do
-    test "replaces the month in companies and empties its staging partition" do
+  describe "publish_staging/2" do
+    test "replaces the month in the table and empties its staging partition" do
       ClickhouseRepo.insert_all(Company, [
         company("00000001"),
         company("00000002"),
         company("00000009", ~D[2026-08-01])
       ])
 
-      Companies.stage_in_batches([company("00000001"), company("00000003")])
+      MonthlyTables.stage_in_batches(Company, [company("00000001"), company("00000003")])
 
-      assert Companies.publish_staging(~D[2026-09-01]) == :ok
+      assert MonthlyTables.publish_staging(Company, ~D[2026-09-01]) == :ok
 
       assert cnpj_roots(Company) == ["00000001", "00000003", "00000009"]
       assert cnpj_roots(@staging) == []
     end
   end
 
-  describe "clear_staging/1" do
+  describe "clear_staging/2" do
     test "drops only the given month from the staging table" do
-      Companies.stage_in_batches([company("00000001"), company("00000002", ~D[2026-08-01])])
+      MonthlyTables.stage_in_batches(Company, [
+        company("00000001"),
+        company("00000002", ~D[2026-08-01])
+      ])
 
-      assert Companies.clear_staging(~D[2026-09-01]) == :ok
+      assert MonthlyTables.clear_staging(Company, ~D[2026-09-01]) == :ok
 
       assert cnpj_roots(@staging) == ["00000002"]
     end
