@@ -29,7 +29,7 @@ Ingestor.import_companies(%{
   data_dir: Path.expand("~/lince-data/2026-09"),
   reference_month: ~D[2026-09-01]
 })
-#=> {:ok, %Ingestor.Pipeline.ImportCompanies.Output{inserted: ...}}
+#=> {:ok, %Ingestor.Pipeline.ImportMonth.Output{inserted: ...}}
 
 Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
 #=> {:ok, %Ingestor.Pipeline.DetectCompanyChanges.Output{changes: ...}}

@@ -4,7 +4,7 @@ defmodule IngestorTest do
 
   import Ingestor.ReceitaFixtures
 
-  alias Ingestor.Pipeline.{DetectCompanyChanges, ImportCompanies}
+  alias Ingestor.Pipeline.{DetectCompanyChanges, ImportMonth}
 
   @moduletag :tmp_dir
 
@@ -37,7 +37,7 @@ defmodule IngestorTest do
 
       empresas_zip!(tmp_dir, [company_line("00000003", "OUTRA LTDA")], "Empresas1.zip")
 
-      assert {:ok, %ImportCompanies.Output{inserted: 3}} =
+      assert {:ok, %ImportMonth.Output{inserted: 3}} =
                Ingestor.import_companies(%{data_dir: tmp_dir, reference_month: ~D[2026-09-01]})
 
       assert %{"00000000" => banco, "00000002" => acucar, "00000003" => _} =

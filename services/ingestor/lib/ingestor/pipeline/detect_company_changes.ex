@@ -10,7 +10,9 @@ defmodule Ingestor.Pipeline.DetectCompanyChanges do
 
   use Ingestor.Pipeline
 
-  alias Ingestor.{Companies, CompanyChanges}
+  alias Ingestor.Companies.Company
+  alias Ingestor.CompanyChanges
+  alias Ingestor.MonthlyTables
 
   defmodule Input do
     @moduledoc false
@@ -55,7 +57,9 @@ defmodule Ingestor.Pipeline.DetectCompanyChanges do
   defp ensure_months_imported({:error, _, _} = error), do: error
 
   defp ensure_months_imported({:ok, params}) do
-    case Enum.reject([params.previous_month, params.reference_month], &Companies.imported?/1) do
+    months = [params.previous_month, params.reference_month]
+
+    case Enum.reject(months, &MonthlyTables.imported?(Company, &1)) do
       [] -> {:ok, params}
       [missing_month | _] -> {:error, :month_not_imported, missing_month}
     end

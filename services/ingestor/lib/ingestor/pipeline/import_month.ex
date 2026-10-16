@@ -1,18 +1,28 @@
-defmodule Ingestor.Pipeline.ImportCompanies do
+defmodule Ingestor.Pipeline.ImportMonth do
   @moduledoc """
-  Imports every Receita Federal `Empresas*.zip` file of a month directory into ClickHouse:
+  Imports every Receita Federal zip file of one dataset (e.g. all `Empresas*.zip`) from a month
+  directory into ClickHouse:
 
-      validate_input_parameters -> put_imported_at -> list_zip_paths -> clear_staging
-        -> load -> publish -> output
+      validate_input_parameters -> put_dataset -> put_imported_at -> list_zip_paths
+        -> clear_staging -> load -> publish -> output
 
-  The whole month is loaded into `companies_staging` and only then swapped into `companies`
-  (see `Ingestor.Companies`), so re-importing a month replaces it completely and a failed import
-  leaves the previous data untouched.
+  The whole month is loaded into the dataset's staging table and only then swapped into the
+  final table (see `Ingestor.MonthlyTables`), so re-importing a month replaces it completely and a
+  failed import leaves the previous data untouched.
+
+  Each dataset is described in `@datasets` by its file prefix, the `Ingestor.Receita` module that
+  turns an extracted CSV into a stream of rows, and the Ecto schema of its table.
   """
 
   use Ingestor.Pipeline
 
-  alias Ingestor.{Companies, Receita}
+  alias Ingestor.Companies.Company
+  alias Ingestor.MonthlyTables
+  alias Ingestor.Receita
+
+  @datasets %{
+    companies: %{file_prefix: "Empresas", parser: Receita.Companies, schema: Company}
+  }
 
   defmodule Input do
     @moduledoc false
@@ -20,6 +30,7 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     import Ecto.Changeset
 
     embedded_schema do
+      field(:dataset, Ecto.Enum, values: [:companies])
       field(:data_dir, :string)
       field(:reference_month, :date)
     end
@@ -27,8 +38,8 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     @doc false
     def changeset(%Input{} = input \\ %Input{}, attrs) do
       input
-      |> cast(attrs, [:data_dir, :reference_month])
-      |> validate_required([:data_dir, :reference_month])
+      |> cast(attrs, [:dataset, :data_dir, :reference_month])
+      |> validate_required([:dataset, :data_dir, :reference_month])
       |> validate_change(:data_dir, fn :data_dir, path ->
         if File.dir?(path), do: [], else: [data_dir: "directory not found"]
       end)
@@ -49,6 +60,7 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     try do
       attrs
       |> validate_input_parameters(Input)
+      |> put_dataset()
       |> put_imported_at()
       |> list_zip_paths()
       |> clear_staging()
@@ -60,6 +72,12 @@ defmodule Ingestor.Pipeline.ImportCompanies do
     end
   end
 
+  defp put_dataset({:error, _, _} = error), do: error
+
+  defp put_dataset({:ok, params}) do
+    {:ok, Map.merge(params, Map.fetch!(@datasets, params.dataset))}
+  end
+
   defp put_imported_at({:error, _, _} = error), do: error
 
   defp put_imported_at({:ok, params}) do
@@ -69,7 +87,9 @@ defmodule Ingestor.Pipeline.ImportCompanies do
   defp list_zip_paths({:error, _, _} = error), do: error
 
   defp list_zip_paths({:ok, params}) do
-    case params.data_dir |> Path.join("Empresas*.zip") |> Path.wildcard() |> Enum.sort() do
+    pattern = Path.join(params.data_dir, "#{params.file_prefix}*.zip")
+
+    case pattern |> Path.wildcard() |> Enum.sort() do
       [] -> {:error, :no_files, params.data_dir}
       zip_paths -> {:ok, Map.put(params, :zip_paths, zip_paths)}
     end
@@ -78,7 +98,7 @@ defmodule Ingestor.Pipeline.ImportCompanies do
   defp clear_staging({:error, _, _} = error), do: error
 
   defp clear_staging({:ok, params}) do
-    case Companies.clear_staging(params.reference_month) do
+    case MonthlyTables.clear_staging(params.schema, params.reference_month) do
       :ok -> {:ok, params}
       {:error, exception} -> {:error, :load_failed, exception}
     end
@@ -113,16 +133,18 @@ defmodule Ingestor.Pipeline.ImportCompanies do
   end
 
   defp stage_csv(csv_path, params) do
-    csv_path
-    |> Receita.Companies.stream(params.reference_month)
-    |> Stream.map(&Map.put(&1, :imported_at, params.imported_at))
-    |> Companies.stage_in_batches()
+    rows =
+      csv_path
+      |> params.parser.stream(params.reference_month)
+      |> Stream.map(&Map.put(&1, :imported_at, params.imported_at))
+
+    MonthlyTables.stage_in_batches(params.schema, rows)
   end
 
   defp publish({:error, _, _} = error), do: error
 
   defp publish({:ok, params}) do
-    case Companies.publish_staging(params.reference_month) do
+    case MonthlyTables.publish_staging(params.schema, params.reference_month) do
       :ok -> {:ok, params}
       {:error, exception} -> {:error, :publish_failed, exception}
     end
