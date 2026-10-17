@@ -1,4 +1,4 @@
-defmodule Ingestor.Establishments.EstablishmentTest do
+defmodule Ingestor.Schemas.EstablishmentTest do
   use Ingestor.ClickhouseCase, async: false
 
   test "round-trips dates before 1970, missing dates and secondary CNAE lists" do

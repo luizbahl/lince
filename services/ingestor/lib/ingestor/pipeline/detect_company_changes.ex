@@ -10,9 +10,9 @@ defmodule Ingestor.Pipeline.DetectCompanyChanges do
 
   use Ingestor.Pipeline
 
-  alias Ingestor.Companies.Company
   alias Ingestor.CompanyChanges
   alias Ingestor.MonthlyTables
+  alias Ingestor.Schemas.Company
 
   defmodule Input do
     @moduledoc false

@@ -11,7 +11,7 @@ defmodule Ingestor.CompanyChanges do
   import Ecto.Query
 
   alias Ingestor.ClickhouseRepo
-  alias Ingestor.CompanyChanges.CompanyChange
+  alias Ingestor.Schemas.CompanyChange
 
   @compared_fields [
     legal_name: "toString(legal_name)",

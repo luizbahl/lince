@@ -53,7 +53,7 @@ lib/
 ├── ingestor.ex            # facade: the only public API of the domain
 ├── ingestor/              # domain — business rules, knows nothing about HTTP
 │   ├── monthly_tables.ex  # persistence helpers per schema (stage_in_batches/3, publish_staging/2)
-│   ├── companies/         # Ecto schemas live here, not in the web layer
+│   ├── schemas/           # all Ecto schemas (one per ClickHouse table), not in the web layer
 │   ├── receita/           # Receita Federal file format: zip.ex, csv.ex, companies.ex
 │   └── pipeline/          # use cases only (railway), one module each: import_month.ex
 ├── ingestor_web.ex

@@ -1,4 +1,4 @@
-defmodule Ingestor.Establishments.Establishment do
+defmodule Ingestor.Schemas.Establishment do
   @moduledoc """
   One establishment (full 14-digit CNPJ: headquarters or branch) as published by Receita Federal
   in a given reference month.

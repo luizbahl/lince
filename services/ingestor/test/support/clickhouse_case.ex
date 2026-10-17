@@ -15,9 +15,9 @@ defmodule Ingestor.ClickhouseCase do
   using do
     quote do
       alias Ingestor.ClickhouseRepo
-      alias Ingestor.Companies.Company
-      alias Ingestor.CompanyChanges.CompanyChange
-      alias Ingestor.Establishments.Establishment
+      alias Ingestor.Schemas.Company
+      alias Ingestor.Schemas.CompanyChange
+      alias Ingestor.Schemas.Establishment
     end
   end
 
