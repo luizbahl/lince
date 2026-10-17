@@ -77,7 +77,10 @@ defmodule Ingestor.ReceitaFixtures do
 
   defp zip!(dir, name, entry_name, lines) do
     zip_path = Path.join(dir, name)
-    {:ok, _} = :zip.create(String.to_charlist(zip_path), [{entry_name, IO.iodata_to_binary(lines)}])
+
+    {:ok, _} =
+      :zip.create(String.to_charlist(zip_path), [{entry_name, IO.iodata_to_binary(lines)}])
+
     zip_path
   end
 end
