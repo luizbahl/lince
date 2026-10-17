@@ -1,4 +1,4 @@
-defmodule Ingestor.Companies.Company do
+defmodule Ingestor.Schemas.Company do
   @moduledoc """
   One company (CNPJ root) as published by Receita Federal in a given reference month.
 
@@ -6,8 +6,8 @@ defmodule Ingestor.Companies.Company do
   because inserts are encoded in ClickHouse's binary format, where e.g. `FixedString(8)` and
   `String` are written differently.
 
-  Each month is written as a whole partition (see `Ingestor.MonthlyTables`), so there is exactly one
-  row per `(cnpj_root, reference_month)`. `imported_at` records when the month was imported.
+  Each month is written as a whole partition (see `Ingestor.MonthlyTables`), so there is exactly
+  one row per `(cnpj_root, reference_month)`. `imported_at` records when the month was imported.
   """
 
   use Ecto.Schema

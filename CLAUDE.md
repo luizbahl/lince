@@ -53,7 +53,7 @@ lib/
 ├── ingestor.ex            # facade: the only public API of the domain
 ├── ingestor/              # domain — business rules, knows nothing about HTTP
 │   ├── monthly_tables.ex  # persistence helpers per schema (stage_in_batches/3, publish_staging/2)
-│   ├── companies/         # Ecto schemas live here, not in the web layer
+│   ├── schemas/           # all Ecto schemas (one per ClickHouse table), not in the web layer
 │   ├── receita/           # Receita Federal file format: zip.ex, csv.ex, companies.ex
 │   └── pipeline/          # use cases only (railway), one module each: import_month.ex
 ├── ingestor_web.ex
@@ -118,6 +118,28 @@ structure) and swapped in atomically with `REPLACE PARTITION`:
 | capital_social | share_capital (comma decimal in source) |
 | porte_empresa | size_code |
 | ente_federativo_responsavel | federative_entity |
+
+`establishments` table (+ `establishments_staging`; MergeTree, `PARTITION BY reference_month
+ORDER BY (cnpj_root, cnpj_order, cnpj_check_digits, reference_month)`). One row per full CNPJ.
+Dates are `Nullable(Date32)` (`Date` starts in 1970; Receita uses `0`/empty for "no date"):
+
+| Receita field | Column |
+|---|---|
+| cnpj_basico / cnpj_ordem / cnpj_dv | cnpj_root / cnpj_order / cnpj_check_digits |
+| identificador_matriz_filial | branch_type_code (1 headquarters, 2 branch) |
+| nome_fantasia | trade_name |
+| situacao_cadastral | registration_status_code (01 null, 02 active, 03 suspended, 04 unfit, 08 closed) |
+| data_situacao_cadastral | registration_status_date |
+| motivo_situacao_cadastral | registration_status_reason_code |
+| nome_cidade_exterior / pais | foreign_city_name / country_code |
+| data_inicio_atividade | activity_start_date |
+| cnae_fiscal_principal | main_cnae_code |
+| cnae_fiscal_secundaria | secondary_cnae_codes (`Array(String)`, comma-separated in source) |
+| tipo_logradouro / logradouro / numero / complemento / bairro | street_type / street / street_number / address_complement / neighborhood |
+| cep / uf / municipio | postal_code / state_code / municipality_code (Receita's code, not IBGE) |
+| ddd_1, telefone_1, ddd_2, telefone_2, ddd_fax, fax | phone_1_area_code, phone_1, phone_2_area_code, phone_2, fax_area_code, fax |
+| correio_eletronico | email |
+| situacao_especial / data_situacao_especial | special_status / special_status_date |
 
 `company_changes` table (ClickHouse, MergeTree, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month, field)`):
 one row per change (`created` / `removed` / `updated` + `field`, `previous_value`, `current_value`

@@ -16,9 +16,9 @@ defmodule Ingestor.Pipeline.ImportMonth do
 
   use Ingestor.Pipeline
 
-  alias Ingestor.Companies.Company
   alias Ingestor.MonthlyTables
   alias Ingestor.Receita
+  alias Ingestor.Schemas.Company
 
   @datasets %{
     companies: %{file_prefix: "Empresas", parser: Receita.Companies, schema: Company}
