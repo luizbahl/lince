@@ -7,6 +7,7 @@ defmodule Ingestor.Receita.Companies do
   """
 
   alias Ingestor.Receita.CSV
+  alias Ingestor.Receita.Fields
 
   @spec stream(Path.t(), Date.t()) :: Enumerable.t(map())
   def stream(csv_path, %Date{} = reference_month) do
@@ -32,17 +33,12 @@ defmodule Ingestor.Receita.Companies do
     %{
       reference_month: reference_month,
       cnpj_root: cnpj_root,
-      legal_name: latin1_to_utf8(legal_name),
+      legal_name: Fields.text(legal_name),
       legal_nature_code: legal_nature_code,
       responsible_qualification_code: responsible_qualification_code,
-      share_capital: parse_decimal(share_capital),
+      share_capital: Fields.decimal(share_capital),
       size_code: size_code,
-      federative_entity: latin1_to_utf8(federative_entity)
+      federative_entity: Fields.text(federative_entity)
     }
   end
-
-  # Every byte is a valid ISO-8859-1 character, so this conversion cannot fail.
-  defp latin1_to_utf8(text), do: :unicode.characters_to_binary(text, :latin1)
-
-  defp parse_decimal(text), do: text |> String.replace(",", ".") |> Decimal.new()
 end
