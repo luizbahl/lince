@@ -10,18 +10,19 @@ defmodule Ingestor.ClickhouseCase do
 
   alias Ingestor.ClickhouseRepo
 
+  @tables ~w(companies companies_staging company_changes establishments establishments_staging)
+
   using do
     quote do
       alias Ingestor.ClickhouseRepo
       alias Ingestor.Companies.Company
       alias Ingestor.CompanyChanges.CompanyChange
+      alias Ingestor.Establishments.Establishment
     end
   end
 
   setup do
-    ClickhouseRepo.query!("TRUNCATE TABLE companies")
-    ClickhouseRepo.query!("TRUNCATE TABLE companies_staging")
-    ClickhouseRepo.query!("TRUNCATE TABLE company_changes")
+    Enum.each(@tables, &ClickhouseRepo.query!("TRUNCATE TABLE #{&1}"))
     :ok
   end
 end
