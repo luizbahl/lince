@@ -1,4 +1,4 @@
-defmodule Ingestor.ClickhouseRepo.Migrations.CreateCompaniesStages do
+defmodule Ingestor.ClickhouseRepo.Migrations.CreateCompaniesStaging do
   use Ecto.Migration
 
   def change do

@@ -19,9 +19,15 @@ defmodule Ingestor.Pipeline.ImportMonth do
   alias Ingestor.MonthlyTables
   alias Ingestor.Receita
   alias Ingestor.Schemas.Company
+  alias Ingestor.Schemas.Establishment
 
   @datasets %{
-    companies: %{file_prefix: "Empresas", parser: Receita.Companies, schema: Company}
+    companies: %{file_prefix: "Empresas", parser: Receita.Companies, schema: Company},
+    establishments: %{
+      file_prefix: "Estabelecimentos",
+      parser: Receita.Establishments,
+      schema: Establishment
+    }
   }
 
   defmodule Input do
@@ -30,7 +36,7 @@ defmodule Ingestor.Pipeline.ImportMonth do
     import Ecto.Changeset
 
     embedded_schema do
-      field(:dataset, Ecto.Enum, values: [:companies])
+      field(:dataset, Ecto.Enum, values: [:companies, :establishments])
       field(:data_dir, :string)
       field(:reference_month, :date)
     end

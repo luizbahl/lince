@@ -8,7 +8,8 @@ defmodule Ingestor.Receita.Establishments do
   values that may be malformed (dates) become `nil` instead (see `Ingestor.Receita.Fields`).
   """
 
-  alias Ingestor.Receita.{CSV, Fields}
+  alias Ingestor.Receita.CSV
+  alias Ingestor.Receita.Fields
 
   @spec stream(Path.t(), Date.t()) :: Enumerable.t(map())
   def stream(csv_path, %Date{} = reference_month) do

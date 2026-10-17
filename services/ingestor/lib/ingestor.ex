@@ -21,6 +21,17 @@ defmodule Ingestor do
     })
   end
 
+  def import_establishments(%{
+        data_dir: data_dir,
+        reference_month: reference_month
+      }) do
+    ImportMonth.call(%ImportMonth.Input{
+      dataset: :establishments,
+      data_dir: data_dir,
+      reference_month: reference_month
+    })
+  end
+
   def detect_company_changes(%{reference_month: reference_month}) do
     DetectCompanyChanges.call(%DetectCompanyChanges.Input{reference_month: reference_month})
   end

@@ -107,6 +107,45 @@ defmodule IngestorTest do
     end
   end
 
+  describe "import_establishments/1" do
+    test "imports every establishment of the month with its ClickHouse types",
+         %{tmp_dir: tmp_dir} do
+      estabelecimentos_zip!(tmp_dir, [
+        establishment_line(cnpj_order: "0001", trade_name: "AÇÚCAR & CIA"),
+        establishment_line(cnpj_order: "0002", branch_type_code: "2", secondary_cnae_codes: "")
+      ])
+
+      assert {:ok, %ImportMonth.Output{inserted: 2}} =
+               Ingestor.import_establishments(%{
+                 data_dir: tmp_dir,
+                 reference_month: ~D[2026-09-01]
+               })
+
+      assert [headquarters, branch] =
+               Establishment |> ClickhouseRepo.all() |> Enum.sort_by(& &1.cnpj_order)
+
+      assert headquarters.trade_name == "AÇÚCAR & CIA"
+      assert headquarters.activity_start_date == ~D[1966-08-01]
+      assert headquarters.secondary_cnae_codes == ["6499999", "6619399"]
+      assert branch.branch_type_code == "2"
+      assert branch.secondary_cnae_codes == []
+    end
+
+    test "reads only Estabelecimentos files from a directory shared with other datasets",
+         %{tmp_dir: tmp_dir} do
+      empresas_zip!(tmp_dir, [company_line("00000000", "BANCO DO BRASIL SA")])
+      estabelecimentos_zip!(tmp_dir, [establishment_line()])
+
+      assert {:ok, %ImportMonth.Output{inserted: 1}} =
+               Ingestor.import_establishments(%{
+                 data_dir: tmp_dir,
+                 reference_month: ~D[2026-09-01]
+               })
+
+      assert ClickhouseRepo.all(Company) == []
+    end
+  end
+
   describe "detect_company_changes/1" do
     test "stores what changed since the previous month", %{tmp_dir: tmp_dir} do
       import_month!(tmp_dir, ~D[2026-08-01], [

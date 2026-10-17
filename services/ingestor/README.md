@@ -8,13 +8,15 @@ company from one month to the next. Part of [Lince](../../README.md).
 ```mermaid
 flowchart LR
     ZIP[Empresas*.zip] -->|import_companies| C[(companies)]
+    EZIP[Estabelecimentos*.zip] -->|import_establishments| E[(establishments)]
     C -->|detect_company_changes| CC[(company_changes)]
 ```
 
-1. **Import** (`Ingestor.import_companies/1`): takes a month directory, unzips each
-   `Empresas*.zip` in turn, stream-parses the ISO-8859-1 CSV into UTF-8 and inserts it into
-   `companies_staging` in batches of 10,000 rows. When every file is loaded, the month is swapped
-   into `companies` at once. Files of several GB are processed with constant memory.
+1. **Import** (`Ingestor.import_companies/1`, `Ingestor.import_establishments/1`): takes a month
+   directory, unzips each zip of the dataset in turn, stream-parses the ISO-8859-1 CSV into UTF-8
+   and inserts it into the staging table (e.g. `companies_staging`) in batches of 10,000 rows.
+   When every file is loaded, the month is swapped into the final table at once. Files of several
+   GB are processed with constant memory.
 2. **Detect changes** (`Ingestor.detect_company_changes/1`): compares a month with the month
    before and stores one row per change in `company_changes`. Both months must be imported.
 
@@ -26,6 +28,12 @@ There is no HTTP API yet; call the facade from `iex -S mix`:
 
 ```elixir
 Ingestor.import_companies(%{
+  data_dir: Path.expand("~/lince-data/2026-09"),
+  reference_month: ~D[2026-09-01]
+})
+#=> {:ok, %Ingestor.Pipeline.ImportMonth.Output{inserted: ...}}
+
+Ingestor.import_establishments(%{
   data_dir: Path.expand("~/lince-data/2026-09"),
   reference_month: ~D[2026-09-01]
 })
