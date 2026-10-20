@@ -8,7 +8,8 @@ defmodule Ingestor do
   invalid values come back as `{:error, :invalid_input, changeset}` from the pipeline.
   """
 
-  alias Ingestor.Pipeline.{DetectCompanyChanges, ImportMonth}
+  alias Ingestor.Pipeline.DetectChanges
+  alias Ingestor.Pipeline.ImportMonth
 
   def import_companies(%{
         data_dir: data_dir,
@@ -33,6 +34,9 @@ defmodule Ingestor do
   end
 
   def detect_company_changes(%{reference_month: reference_month}) do
-    DetectCompanyChanges.call(%DetectCompanyChanges.Input{reference_month: reference_month})
+    DetectChanges.call(%DetectChanges.Input{
+      dataset: :companies,
+      reference_month: reference_month
+    })
   end
 end

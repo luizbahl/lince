@@ -1,7 +1,7 @@
-defmodule Ingestor.CompanyChangesTest do
+defmodule Ingestor.ChangesTest do
   use Ingestor.ClickhouseCase, async: false
 
-  alias Ingestor.CompanyChanges
+  alias Ingestor.Changes
 
   @previous ~D[2026-08-01]
   @current ~D[2026-09-01]
@@ -23,7 +23,7 @@ defmodule Ingestor.CompanyChangesTest do
   end
 
   defp stored_changes do
-    CompanyChange
+    Change
     |> ClickhouseRepo.all()
     |> Enum.map(
       &Map.take(&1, [:cnpj_root, :change_type, :field, :previous_value, :current_value])
@@ -31,7 +31,7 @@ defmodule Ingestor.CompanyChangesTest do
     |> Enum.sort_by(&{&1.cnpj_root, &1.field})
   end
 
-  describe "replace_month/2" do
+  describe "replace_month/3 for companies" do
     test "stores one row per changed field, with both values as strings" do
       ClickhouseRepo.insert_all(Company, [
         company(@previous, "00000001", %{legal_name: "OLD LTDA"}),
@@ -41,7 +41,7 @@ defmodule Ingestor.CompanyChangesTest do
         })
       ])
 
-      assert CompanyChanges.replace_month(@current, @previous) == 2
+      assert Changes.replace_month(:companies, @current, @previous) == 2
 
       assert stored_changes() == [
                %{
@@ -61,6 +61,24 @@ defmodule Ingestor.CompanyChangesTest do
              ]
     end
 
+    test "tags the change with the dataset and leaves the establishment key empty" do
+      ClickhouseRepo.insert_all(Company, [
+        company(@previous, "00000001", %{legal_name: "OLD LTDA"}),
+        company(@current, "00000001", %{legal_name: "NEW LTDA"})
+      ])
+
+      Changes.replace_month(:companies, @current, @previous)
+
+      assert [
+               %Change{
+                 dataset: "companies",
+                 reference_month: @current,
+                 cnpj_order: "",
+                 cnpj_check_digits: ""
+               }
+             ] = ClickhouseRepo.all(Change)
+    end
+
     test "detects created and removed companies and ignores unchanged ones" do
       ClickhouseRepo.insert_all(Company, [
         company(@previous, "00000001"),
@@ -69,7 +87,7 @@ defmodule Ingestor.CompanyChangesTest do
         company(@current, "00000003")
       ])
 
-      assert CompanyChanges.replace_month(@current, @previous) == 2
+      assert Changes.replace_month(:companies, @current, @previous) == 2
 
       assert [
                %{cnpj_root: "00000002", change_type: "removed", field: ""},
@@ -77,10 +95,11 @@ defmodule Ingestor.CompanyChangesTest do
              ] = stored_changes()
     end
 
-    test "replaces the changes of the month and keeps the other months" do
-      ClickhouseRepo.insert_all(CompanyChange, [
-        %{reference_month: @current, cnpj_root: "99999999", change_type: "created"},
-        %{reference_month: @previous, cnpj_root: "88888888", change_type: "created"}
+    test "replaces only the changes of the same dataset and month" do
+      ClickhouseRepo.insert_all(Change, [
+        %{dataset: "companies", reference_month: @current, cnpj_root: "99999999"},
+        %{dataset: "companies", reference_month: @previous, cnpj_root: "88888888"},
+        %{dataset: "establishments", reference_month: @current, cnpj_root: "77777777"}
       ])
 
       ClickhouseRepo.insert_all(Company, [
@@ -88,8 +107,9 @@ defmodule Ingestor.CompanyChangesTest do
         company(@current, "00000001")
       ])
 
-      assert CompanyChanges.replace_month(@current, @previous) == 0
-      assert [%{cnpj_root: "88888888"}] = stored_changes()
+      assert Changes.replace_month(:companies, @current, @previous) == 0
+
+      assert [%{cnpj_root: "77777777"}, %{cnpj_root: "88888888"}] = stored_changes()
     end
   end
 end

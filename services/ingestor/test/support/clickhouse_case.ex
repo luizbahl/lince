@@ -10,13 +10,13 @@ defmodule Ingestor.ClickhouseCase do
 
   alias Ingestor.ClickhouseRepo
 
-  @tables ~w(companies companies_staging company_changes establishments establishments_staging)
+  @tables ~w(companies companies_staging changes establishments establishments_staging)
 
   using do
     quote do
       alias Ingestor.ClickhouseRepo
+      alias Ingestor.Schemas.Change
       alias Ingestor.Schemas.Company
-      alias Ingestor.Schemas.CompanyChange
       alias Ingestor.Schemas.Establishment
     end
   end

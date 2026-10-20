@@ -10,25 +10,14 @@ defmodule Ingestor.Pipeline.ImportMonth do
   final table (see `Ingestor.MonthlyTables`), so re-importing a month replaces it completely and a
   failed import leaves the previous data untouched.
 
-  Each dataset is described in `@datasets` by its file prefix, the `Ingestor.Receita` module that
-  turns an extracted CSV into a stream of rows, and the Ecto schema of its table.
+  Each dataset's file prefix, parser and table come from `Ingestor.Datasets`.
   """
 
   use Ingestor.Pipeline
 
+  alias Ingestor.Datasets
   alias Ingestor.MonthlyTables
   alias Ingestor.Receita
-  alias Ingestor.Schemas.Company
-  alias Ingestor.Schemas.Establishment
-
-  @datasets %{
-    companies: %{file_prefix: "Empresas", parser: Receita.Companies, schema: Company},
-    establishments: %{
-      file_prefix: "Estabelecimentos",
-      parser: Receita.Establishments,
-      schema: Establishment
-    }
-  }
 
   defmodule Input do
     @moduledoc false
@@ -36,7 +25,7 @@ defmodule Ingestor.Pipeline.ImportMonth do
     import Ecto.Changeset
 
     embedded_schema do
-      field(:dataset, Ecto.Enum, values: [:companies, :establishments])
+      field(:dataset, Ecto.Enum, values: Ingestor.Datasets.names())
       field(:data_dir, :string)
       field(:reference_month, :date)
     end
@@ -81,7 +70,7 @@ defmodule Ingestor.Pipeline.ImportMonth do
   defp put_dataset({:error, _, _} = error), do: error
 
   defp put_dataset({:ok, params}) do
-    {:ok, Map.merge(params, Map.fetch!(@datasets, params.dataset))}
+    {:ok, Map.merge(params, Datasets.fetch!(params.dataset))}
   end
 
   defp put_imported_at({:error, _, _} = error), do: error
