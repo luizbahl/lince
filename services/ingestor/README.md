@@ -10,6 +10,7 @@ flowchart LR
     ZIP[Empresas*.zip] -->|import_companies| C[(companies)]
     EZIP[Estabelecimentos*.zip] -->|import_establishments| E[(establishments)]
     C -->|detect_company_changes| CH[(changes)]
+    E -->|detect_establishment_changes| CH
 ```
 
 1. **Import** (`Ingestor.import_companies/1`, `Ingestor.import_establishments/1`): takes a month
@@ -17,7 +18,8 @@ flowchart LR
    and inserts it into the staging table (e.g. `companies_staging`) in batches of 10,000 rows.
    When every file is loaded, the month is swapped into the final table at once. Files of several
    GB are processed with constant memory.
-2. **Detect changes** (`Ingestor.detect_company_changes/1`): compares a month with the month
+2. **Detect changes** (`Ingestor.detect_company_changes/1`,
+   `Ingestor.detect_establishment_changes/1`): compares a month with the month
    before and stores one row per change in `changes`, tagged with the dataset. Both months must
    be imported.
 
@@ -44,6 +46,9 @@ Ingestor.import_establishments(%{
 #=> {:ok, %Ingestor.Pipeline.ImportMonth.Output{inserted: ...}}
 
 Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
+#=> {:ok, %Ingestor.Pipeline.DetectChanges.Output{changes: ...}}
+
+Ingestor.detect_establishment_changes(%{reference_month: ~D[2026-09-01]})
 #=> {:ok, %Ingestor.Pipeline.DetectChanges.Output{changes: ...}}
 ```
 

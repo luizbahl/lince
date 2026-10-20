@@ -37,7 +37,26 @@ defmodule Ingestor.Datasets do
     establishments: %{
       file_prefix: "Estabelecimentos",
       parser: Receita.Establishments,
-      schema: Establishment
+      schema: Establishment,
+      key_columns: [:cnpj_root, :cnpj_order, :cnpj_check_digits],
+      compared_fields: [
+        trade_name: "toString(trade_name)",
+        registration_status_code: "toString(registration_status_code)",
+        registration_status_date: "ifNull(toString(registration_status_date), '')",
+        registration_status_reason_code: "toString(registration_status_reason_code)",
+        main_cnae_code: "toString(main_cnae_code)",
+        secondary_cnae_codes: "arrayStringConcat(arraySort(secondary_cnae_codes), ',')",
+        street_type: "toString(street_type)",
+        street: "toString(street)",
+        street_number: "toString(street_number)",
+        address_complement: "toString(address_complement)",
+        neighborhood: "toString(neighborhood)",
+        postal_code: "toString(postal_code)",
+        state_code: "toString(state_code)",
+        municipality_code: "toString(municipality_code)",
+        special_status: "toString(special_status)",
+        special_status_date: "ifNull(toString(special_status_date), '')"
+      ]
     }
   }
 
@@ -46,7 +65,10 @@ defmodule Ingestor.Datasets do
 
   @spec with_change_detection() :: [atom()]
   def with_change_detection do
-    for {name, %{compared_fields: _}} <- @datasets, do: name
+    @datasets
+    |> Enum.filter(fn {_name, config} -> Map.has_key?(config, :compared_fields) end)
+    |> Enum.map(fn {name, _config} -> name end)
+    |> Enum.sort()
   end
 
   @spec fetch!(atom()) :: map()

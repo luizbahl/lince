@@ -165,7 +165,8 @@ detection `key_columns` + `compared_fields`). The generic pipelines `ImportMonth
       (re-imports drop companies missing from the new files); `companies` back to plain MergeTree
 - [x] ingestor: import `Estabelecimentos` (`Ingestor.import_establishments/1`)
 - [x] ingestor: single `changes` table + generic `DetectChanges` (still companies only)
-- [ ] ingestor: establishments change detection (status, CNAE, address)
+- [x] ingestor: establishments change detection (`Ingestor.detect_establishment_changes/1`:
+      status, CNAEs, address; phones and e-mail are not compared)
 - [ ] ingestor: download month files from Receita (URL moved to a SERPRO+ Nextcloud share)
 - [ ] ingestor: import `Socios` (partners) + their diff
 - [ ] ingestor: HTTP API (Phoenix API-only) for the monitor to query changes by CNPJ

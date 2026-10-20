@@ -8,7 +8,7 @@ defmodule Ingestor.DatasetsTest do
   end
 
   test "with_change_detection/0 lists only datasets with compared fields" do
-    assert Datasets.with_change_detection() == [:companies]
+    assert Datasets.with_change_detection() == [:companies, :establishments]
   end
 
   test "fetch!/1 raises for an unknown dataset" do
