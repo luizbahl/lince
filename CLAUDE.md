@@ -141,10 +141,16 @@ Dates are `Nullable(Date32)` (`Date` starts in 1970; Receita uses `0`/empty for 
 | correio_eletronico | email |
 | situacao_especial / data_situacao_especial | special_status / special_status_date |
 
-`company_changes` table (ClickHouse, MergeTree, `PARTITION BY reference_month ORDER BY (cnpj_root, reference_month, field)`):
-one row per change (`created` / `removed` / `updated` + `field`, `previous_value`, `current_value`
-as strings). Filled by `Ingestor.CompanyChanges.replace_month/2`: a `GROUP BY cnpj_root` diff
-inside ClickHouse, made idempotent with `DROP PARTITION` before the insert.
+`changes` table (ClickHouse, MergeTree, `PARTITION BY (reference_month, dataset)
+ORDER BY (cnpj_root, cnpj_order, cnpj_check_digits, reference_month, dataset, field)`): one row
+per change of any dataset (`created` / `removed` / `updated` + `field`, `previous_value`,
+`current_value` as strings; `cnpj_order` / `cnpj_check_digits` empty for `companies`). Filled by
+`Ingestor.Changes.replace_month/3`: a `GROUP BY <key columns>` diff inside ClickHouse built from
+the dataset config, made idempotent with `DROP PARTITION (month, dataset)` before the insert.
+
+Datasets are configured in `Ingestor.Datasets` (file prefix, parser, schema, and for change
+detection `key_columns` + `compared_fields`). The generic pipelines `ImportMonth` and
+`DetectChanges` take a `dataset`; the facade exposes one explicit function per dataset.
 
 ## Current status / next steps
 
@@ -157,6 +163,10 @@ inside ClickHouse, made idempotent with `DROP PARTITION` before the insert.
 - [x] ingestor: month-over-month change detection for `companies` (`Ingestor.detect_company_changes/1`)
 - [x] ingestor: import a whole month directory through `companies_staging` + `REPLACE PARTITION`
       (re-imports drop companies missing from the new files); `companies` back to plain MergeTree
-- [ ] ingestor: import `Estabelecimentos` (status, CNAE) and `Socios` (partners) + their diffs
+- [x] ingestor: import `Estabelecimentos` (`Ingestor.import_establishments/1`)
+- [x] ingestor: single `changes` table + generic `DetectChanges` (still companies only)
+- [ ] ingestor: establishments change detection (status, CNAE, address)
+- [ ] ingestor: download month files from Receita (URL moved to a SERPRO+ Nextcloud share)
+- [ ] ingestor: import `Socios` (partners) + their diff
 - [ ] ingestor: HTTP API (Phoenix API-only) for the monitor to query changes by CNPJ
 - [ ] then monitor, notifier, portal, CI for each service, deploy pipeline

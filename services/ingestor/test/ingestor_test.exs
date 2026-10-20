@@ -4,7 +4,8 @@ defmodule IngestorTest do
 
   import Ingestor.ReceitaFixtures
 
-  alias Ingestor.Pipeline.{DetectCompanyChanges, ImportMonth}
+  alias Ingestor.Pipeline.DetectChanges
+  alias Ingestor.Pipeline.ImportMonth
 
   @moduletag :tmp_dir
 
@@ -158,11 +159,11 @@ defmodule IngestorTest do
         company_line("00000003", "OPENED LTDA")
       ])
 
-      assert {:ok, %DetectCompanyChanges.Output{changes: 3}} =
+      assert {:ok, %DetectChanges.Output{changes: 3}} =
                Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
 
       changes =
-        CompanyChange
+        Change
         |> ClickhouseRepo.all()
         |> Map.new(&{&1.cnpj_root, &1})
 
@@ -178,7 +179,7 @@ defmodule IngestorTest do
       assert {:error, :month_not_imported, ~D[2026-08-01]} =
                Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
 
-      assert ClickhouseRepo.all(CompanyChange) == [], "nothing is stored when a step fails"
+      assert ClickhouseRepo.all(Change) == [], "nothing is stored when a step fails"
     end
 
     test "returns the changeset when the input is invalid" do
