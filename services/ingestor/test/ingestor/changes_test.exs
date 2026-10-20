@@ -22,6 +22,23 @@ defmodule Ingestor.ChangesTest do
     )
   end
 
+  defp establishment(reference_month, cnpj_order, overrides \\ %{}) do
+    Map.merge(
+      %{
+        reference_month: reference_month,
+        cnpj_root: "00000000",
+        cnpj_order: cnpj_order,
+        cnpj_check_digits: "91",
+        registration_status_code: "02",
+        registration_status_date: ~D[2005-11-03],
+        main_cnae_code: "6422100",
+        secondary_cnae_codes: ["6499999", "6619399"],
+        special_status_date: nil
+      },
+      overrides
+    )
+  end
+
   defp stored_changes do
     Change
     |> ClickhouseRepo.all()
@@ -110,6 +127,65 @@ defmodule Ingestor.ChangesTest do
       assert Changes.replace_month(:companies, @current, @previous) == 0
 
       assert [%{cnpj_root: "77777777"}, %{cnpj_root: "88888888"}] = stored_changes()
+    end
+  end
+
+  describe "replace_month/3 for establishments" do
+    test "compares each full CNPJ and stores its order and check digits" do
+      ClickhouseRepo.insert_all(Establishment, [
+        establishment(@previous, "0001"),
+        establishment(@current, "0001", %{
+          registration_status_code: "08",
+          registration_status_date: ~D[2026-09-15]
+        }),
+        establishment(@previous, "0002"),
+        establishment(@current, "0002")
+      ])
+
+      assert Changes.replace_month(:establishments, @current, @previous) == 2
+
+      assert [status_date, status] =
+               Change |> ClickhouseRepo.all() |> Enum.sort_by(& &1.field, :desc)
+
+      assert %Change{
+               dataset: "establishments",
+               cnpj_order: "0001",
+               cnpj_check_digits: "91",
+               field: "registration_status_date",
+               previous_value: "2005-11-03",
+               current_value: "2026-09-15"
+             } = status_date
+
+      assert %{field: "registration_status_code", previous_value: "02", current_value: "08"} =
+               status
+    end
+
+    test "a date that appears is a change and reordered CNAEs are not" do
+      ClickhouseRepo.insert_all(Establishment, [
+        establishment(@previous, "0001", %{secondary_cnae_codes: ["6499999", "6619399"]}),
+        establishment(@current, "0001", %{
+          secondary_cnae_codes: ["6619399", "6499999"],
+          special_status_date: ~D[2026-09-10]
+        })
+      ])
+
+      assert Changes.replace_month(:establishments, @current, @previous) == 1
+
+      assert [%{field: "special_status_date", previous_value: "", current_value: "2026-09-10"}] =
+               stored_changes()
+    end
+
+    test "a new branch is created with its full CNPJ" do
+      ClickhouseRepo.insert_all(Establishment, [
+        establishment(@previous, "0001"),
+        establishment(@current, "0001"),
+        establishment(@current, "0002")
+      ])
+
+      assert Changes.replace_month(:establishments, @current, @previous) == 1
+
+      assert [%Change{change_type: "created", cnpj_order: "0002", cnpj_check_digits: "91"}] =
+               ClickhouseRepo.all(Change)
     end
   end
 end

@@ -21,6 +21,14 @@ defmodule IngestorTest do
       Ingestor.import_companies(%{data_dir: data_dir, reference_month: reference_month})
   end
 
+  defp import_establishments_month!(tmp_dir, reference_month, lines) do
+    data_dir = new_dir!(tmp_dir, "establishments-#{reference_month}")
+    estabelecimentos_zip!(data_dir, lines)
+
+    {:ok, _} =
+      Ingestor.import_establishments(%{data_dir: data_dir, reference_month: reference_month})
+  end
+
   defp companies_by_cnpj_root do
     Company |> ClickhouseRepo.all() |> Map.new(&{&1.cnpj_root, &1})
   end
@@ -187,6 +195,46 @@ defmodule IngestorTest do
                Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-15]})
 
       assert {"must be the first day of the month", _} = changeset.errors[:reference_month]
+    end
+  end
+
+  describe "detect_establishment_changes/1" do
+    test "stores a closed headquarters and a removed branch", %{tmp_dir: tmp_dir} do
+      import_establishments_month!(tmp_dir, ~D[2026-08-01], [
+        establishment_line(cnpj_order: "0001"),
+        establishment_line(cnpj_order: "0002", branch_type_code: "2")
+      ])
+
+      import_establishments_month!(tmp_dir, ~D[2026-09-01], [
+        establishment_line(
+          cnpj_order: "0001",
+          registration_status_code: "08",
+          registration_status_date: "20260915"
+        )
+      ])
+
+      assert {:ok, %DetectChanges.Output{changes: 3}} =
+               Ingestor.detect_establishment_changes(%{reference_month: ~D[2026-09-01]})
+
+      changes =
+        Change
+        |> ClickhouseRepo.all()
+        |> Map.new(&{{&1.cnpj_order, &1.field}, &1})
+
+      assert %{previous_value: "02", current_value: "08"} =
+               changes[{"0001", "registration_status_code"}]
+
+      assert %{current_value: "2026-09-15"} = changes[{"0001", "registration_status_date"}]
+      assert %{change_type: "removed"} = changes[{"0002", ""}]
+    end
+
+    test "checks the establishments months, not the companies ones", %{tmp_dir: tmp_dir} do
+      import_month!(tmp_dir, ~D[2026-08-01], [company_line("00000000", "EMPRESA")])
+      import_month!(tmp_dir, ~D[2026-09-01], [company_line("00000000", "EMPRESA")])
+      import_establishments_month!(tmp_dir, ~D[2026-09-01], [establishment_line()])
+
+      assert {:error, :month_not_imported, ~D[2026-08-01]} =
+               Ingestor.detect_establishment_changes(%{reference_month: ~D[2026-09-01]})
     end
   end
 end

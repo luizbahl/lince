@@ -39,4 +39,11 @@ defmodule Ingestor do
       reference_month: reference_month
     })
   end
+
+  def detect_establishment_changes(%{reference_month: reference_month}) do
+    DetectChanges.call(%DetectChanges.Input{
+      dataset: :establishments,
+      reference_month: reference_month
+    })
+  end
 end
