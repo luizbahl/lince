@@ -1,7 +1,7 @@
 defmodule Ingestor.Changes do
   @moduledoc """
-  Detects what changed in a dataset's table from one reference month to the next and stores the
-  result in `changes`.
+  Detects what changed in a dataset's table from one reference month to the next, stores the
+  result in `changes` and lists it per CNPJ.
 
   The comparison runs entirely inside ClickHouse, so none of the ~60M rows of each month is sent
   to Elixir. Both months are grouped by the dataset's key columns instead of joined: a
@@ -37,6 +37,42 @@ defmodule Ingestor.Changes do
 
     count_month(dataset, current_month)
   end
+
+  @doc """
+  Lists the stored changes of a CNPJ, newest month first.
+
+  With only `cnpj_root`, returns the changes of the company and of all its establishments. With
+  `cnpj_order` and `cnpj_check_digits` too, returns the changes of that establishment plus the
+  company-level ones (`cnpj_order` empty), since those concern every establishment. `since`, when
+  given, keeps only changes from that reference month on.
+  """
+  @spec list(%{
+          cnpj_root: String.t(),
+          cnpj_order: String.t() | nil,
+          cnpj_check_digits: String.t() | nil,
+          since: Date.t() | nil
+        }) :: [Change.t()]
+  def list(%{cnpj_root: cnpj_root} = filters) do
+    Change
+    |> where(cnpj_root: ^cnpj_root)
+    |> where_establishment(filters)
+    |> where_since(filters)
+    |> order_by([c], desc: c.reference_month, asc: c.dataset, asc: c.cnpj_order, asc: c.field)
+    |> ClickhouseRepo.all()
+  end
+
+  defp where_establishment(query, %{cnpj_order: nil}), do: query
+
+  defp where_establishment(query, %{cnpj_order: order, cnpj_check_digits: check_digits}) do
+    where(
+      query,
+      [c],
+      c.cnpj_order == "" or (c.cnpj_order == ^order and c.cnpj_check_digits == ^check_digits)
+    )
+  end
+
+  defp where_since(query, %{since: nil}), do: query
+  defp where_since(query, %{since: since}), do: where(query, [c], c.reference_month >= ^since)
 
   defp detect_sql(config) do
     table = config.schema.__schema__(:source)

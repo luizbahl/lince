@@ -39,6 +39,13 @@ defmodule Ingestor.ChangesTest do
     )
   end
 
+  defp filters(overrides) do
+    Map.merge(
+      %{cnpj_root: "00000000", cnpj_order: nil, cnpj_check_digits: nil, since: nil},
+      overrides
+    )
+  end
+
   defp stored_changes do
     Change
     |> ClickhouseRepo.all()
@@ -186,6 +193,47 @@ defmodule Ingestor.ChangesTest do
 
       assert [%Change{change_type: "created", cnpj_order: "0002", cnpj_check_digits: "91"}] =
                ClickhouseRepo.all(Change)
+    end
+  end
+
+  describe "list/1" do
+    setup do
+      ClickhouseRepo.insert_all(Change, [
+        %{dataset: "companies", reference_month: @current, cnpj_root: "00000000", field: "a"},
+        %{
+          dataset: "establishments",
+          reference_month: @current,
+          cnpj_root: "00000000",
+          cnpj_order: "0001",
+          cnpj_check_digits: "91",
+          field: "b"
+        },
+        %{
+          dataset: "establishments",
+          reference_month: @previous,
+          cnpj_root: "00000000",
+          cnpj_order: "0002",
+          cnpj_check_digits: "72",
+          field: "c"
+        },
+        %{dataset: "companies", reference_month: @current, cnpj_root: "11111111", field: "d"}
+      ])
+
+      :ok
+    end
+
+    test "with the root only, lists the company and all its establishments, newest first" do
+      assert ["a", "b", "c"] = filters(%{}) |> Changes.list() |> Enum.map(& &1.field)
+    end
+
+    test "with a full CNPJ, lists that establishment and the company-level changes" do
+      changes = Changes.list(filters(%{cnpj_order: "0001", cnpj_check_digits: "91"}))
+
+      assert ["a", "b"] = Enum.map(changes, & &1.field)
+    end
+
+    test "with since, keeps only changes from that month on" do
+      assert ["a", "b"] = filters(%{since: @current}) |> Changes.list() |> Enum.map(& &1.field)
     end
   end
 end

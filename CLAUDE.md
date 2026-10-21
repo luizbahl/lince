@@ -73,6 +73,14 @@ lib/
   - no `IO.inspect` left in pipelines;
   - only use cases live in `pipeline/`; the helpers they call (`Receita.*`, `MonthlyTables`) are plain
     modules, not pipelines.
+- Tests mirror `lib/`: one test file per module (`lib/ingestor/pipeline/list_changes.ex` →
+  `test/ingestor/pipeline/list_changes_test.exs`), grouped by scenario with `describe`.
+  - Pipeline tests call `Pipeline.call(%Input{})` directly and cover every scenario and error;
+  - `test/ingestor_test.exs` covers only the facade's own contract (right dataset/Input, optional
+    keys forwarded). A call missing a required key is not tested: Elixir 1.20's type checker
+    flags it at compile time, and CI compiles with `--warnings-as-errors`;
+  - helpers shared by several test files live in `test/support/` (`ReceitaFixtures`,
+    `ImportHelpers`), never `defp` inside a `describe`.
 - Facade functions (`Ingestor.*`) pattern-match the required atom keys and build the pipeline's
   `%Input{}` (optional fields via `Map.get(params, :key, default)`); they do not take a loose
   `attrs` map. The web layer converts string-keyed request params before calling the facade. A
