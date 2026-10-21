@@ -50,6 +50,12 @@ Ingestor.detect_company_changes(%{reference_month: ~D[2026-09-01]})
 
 Ingestor.detect_establishment_changes(%{reference_month: ~D[2026-09-01]})
 #=> {:ok, %Ingestor.Pipeline.DetectChanges.Output{changes: ...}}
+
+# 8 characters: the company and all its establishments.
+# 14 characters: one establishment plus its company-level changes.
+# Punctuation is ignored and letters are accepted (alphanumeric CNPJ, July 2026).
+Ingestor.list_changes(%{cnpj: "00.000.000/0001-91", since: ~D[2026-01-01]})
+#=> {:ok, %Ingestor.Pipeline.ListChanges.Output{changes: [%Ingestor.Schemas.Change{}, ...]}}
 ```
 
 Errors come back as `{:error, type, detail}`:
@@ -63,6 +69,7 @@ Errors come back as `{:error, type, detail}`:
 | `:publish_failed` | the staged month could not be swapped into the final table |
 | `:month_not_imported` | `detail` is the month (current or previous) missing from the dataset |
 | `:detect_failed` | the change detection query failed |
+| `:fetch_failed` | the query listing a CNPJ's changes failed |
 
 ## Data model
 
