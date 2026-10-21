@@ -6,3 +6,5 @@ config :ingestor, Ingestor.ClickhouseRepo,
   database: "lince",
   username: "lince",
   password: "lince"
+
+config :ingestor, IngestorWeb.Endpoint, http: [ip: {0, 0, 0, 0}, port: 4002]

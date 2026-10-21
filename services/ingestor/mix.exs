@@ -26,9 +26,12 @@ defmodule Ingestor.MixProject do
 
   defp deps do
     [
+      {:bandit, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ecto_ch, "~> 0.7"},
+      {:jason, "~> 1.4"},
       {:nimble_csv, "~> 1.2"},
+      {:phoenix, "~> 1.8"},
       {:req, "~> 0.5"}
     ]
   end
