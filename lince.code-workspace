@@ -1,0 +1,11 @@
+{
+  "folders": [
+    { "name": "lince", "path": "." },
+    { "name": "ingestor", "path": "services/ingestor" }
+  ],
+  "settings": {
+    "files.exclude": {
+      "services/ingestor": true
+    }
+  }
+}
