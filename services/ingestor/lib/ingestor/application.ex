@@ -6,7 +6,8 @@ defmodule Ingestor.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      Ingestor.ClickhouseRepo
+      Ingestor.ClickhouseRepo,
+      IngestorWeb.Endpoint
     ]
 
     opts = [strategy: :one_for_one, name: Ingestor.Supervisor]
