@@ -4,6 +4,9 @@ defmodule Ingestor.ClickhouseCase do
 
   ClickHouse has no transactions, so there is no Ecto sandbox: each test starts by truncating the
   tables it uses. For the same reason these tests cannot run concurrently (`async: false`).
+
+  Tests built on another case template (e.g. `IngestorWeb.ConnCase`) that also touch ClickHouse
+  get the same cleanup with `setup {Ingestor.ClickhouseCase, :truncate_tables}`.
   """
 
   use ExUnit.CaseTemplate
@@ -21,7 +24,11 @@ defmodule Ingestor.ClickhouseCase do
     end
   end
 
-  setup do
+  setup context do
+    truncate_tables(context)
+  end
+
+  def truncate_tables(_context) do
     Enum.each(@tables, &ClickhouseRepo.query!("TRUNCATE TABLE #{&1}"))
     :ok
   end

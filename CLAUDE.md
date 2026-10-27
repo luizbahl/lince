@@ -177,5 +177,6 @@ detection `key_columns` + `compared_fields`). The generic pipelines `ImportMonth
       status, CNAEs, address; phones and e-mail are not compared)
 - [ ] ingestor: download month files from Receita (URL moved to a SERPRO+ Nextcloud share)
 - [ ] ingestor: import `Socios` (partners) + their diff
-- [ ] ingestor: HTTP API (Phoenix API-only) for the monitor to query changes by CNPJ
+- [x] ingestor: HTTP API (Phoenix API-only): `GET /health`, `GET /changes?cnpj=&since=`
+      (no route prefix; errors via `FallbackController`: 422 invalid input, 500 logged)
 - [ ] then monitor, notifier, portal, CI for each service, deploy pipeline
