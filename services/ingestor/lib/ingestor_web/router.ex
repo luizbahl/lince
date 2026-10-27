@@ -9,5 +9,6 @@ defmodule IngestorWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show
+    get "/changes", ChangeController, :index
   end
 end

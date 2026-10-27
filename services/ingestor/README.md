@@ -30,7 +30,7 @@ Both operations are idempotent: running them again for the same month replaces t
 
 ## Usage
 
-There is no HTTP API yet; call the facade from `iex -S mix`:
+Imports and change detection are run from `iex -S mix` (the HTTP API below only reads):
 
 ```elixir
 Ingestor.import_companies(%{
@@ -70,6 +70,55 @@ Errors come back as `{:error, type, detail}`:
 | `:month_not_imported` | `detail` is the month (current or previous) missing from the dataset |
 | `:detect_failed` | the change detection query failed |
 | `:fetch_failed` | the query listing a CNPJ's changes failed |
+
+## HTTP API
+
+JSON over HTTP on port 4002 (`http://ingestor:4002` inside Docker Compose).
+
+### `GET /health`
+
+Liveness check. Always `200 {"status": "ok"}` while the service is up.
+
+### `GET /changes`
+
+The changes detected for a CNPJ, newest month first.
+
+| Query param | Required | Description |
+|---|---|---|
+| `cnpj` | yes | 8-character root (the company and all its establishments) or 14-character full CNPJ (one establishment plus its company-level changes). Punctuation is ignored; letters are accepted in the first 12 characters (alphanumeric CNPJ). |
+| `since` | no | `YYYY-MM-DD`; only changes from that reference month on. |
+
+```bash
+curl -s 'localhost:4002/changes?cnpj=00.000.000/0001-91&since=2026-09-01'
+```
+
+```json
+{
+  "data": [
+    {
+      "dataset": "establishments",
+      "reference_month": "2026-09-01",
+      "cnpj_root": "00000000",
+      "cnpj_order": "0001",
+      "cnpj_check_digits": "91",
+      "change_type": "updated",
+      "field": "registration_status_code",
+      "previous_value": "02",
+      "current_value": "08",
+      "detected_at": "2026-10-03T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+`cnpj_order` and `cnpj_check_digits` are `null` for company-level changes; `field` is `null` for
+`created` / `removed`.
+
+| Status | When | Body |
+|---|---|---|
+| 200 | always, even with no changes | `{"data": [...]}` |
+| 422 | invalid `cnpj` or `since` | `{"errors": {"cnpj": ["can't be blank"]}}` |
+| 500 | internal failure (details are logged, not returned) | `{"errors": {"detail": "Internal Server Error"}}` |
 
 ## Data model
 
